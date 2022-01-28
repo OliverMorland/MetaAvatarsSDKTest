@@ -195,6 +195,7 @@ public class SampleAvatarEntity : OvrAvatarEntity
         foreach (var asset in _assets)
         {
             path[0] = asset.path + assetPostfix;
+            Debug.Log($"Loading path {path[0]}");
             switch (asset.source)
             {
             case AssetSource.Zip:
