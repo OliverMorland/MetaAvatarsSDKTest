@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
 using UnityEngine.UI;
+using Oculus.Avatar2;
 
 public class EnterRoom : MonoBehaviourPunCallbacks
 {
@@ -11,6 +12,7 @@ public class EnterRoom : MonoBehaviourPunCallbacks
     const string AVATAR_PREFAB_NAME = "GGMetaAvatarEntity";
 
     [SerializeField] Text m_screenText;
+    [SerializeField] Camera m_camera;
     [SerializeField] float m_minSpawnPos_x = -5f;
     [SerializeField] float m_maxSpawnPos_x = 5f;
     [SerializeField] float m_minSpawnPos_z = -5f;
@@ -42,6 +44,10 @@ public class EnterRoom : MonoBehaviourPunCallbacks
         float rand_x = Random.Range(m_minSpawnPos_x, m_maxSpawnPos_x);
         float rand_z = Random.Range(m_minSpawnPos_z, m_maxSpawnPos_z);
         Vector3 spawnPos = new Vector3(rand_x, SPAWN_POS_Z, rand_z);
-        PhotonNetwork.Instantiate(AVATAR_PREFAB_NAME, spawnPos, Quaternion.identity);
+        GameObject myAvatar = PhotonNetwork.Instantiate(AVATAR_PREFAB_NAME, spawnPos, Quaternion.identity);
+        m_camera.transform.SetParent(myAvatar.transform);
+        m_camera.transform.localPosition = Vector3.zero;
+        m_camera.transform.localRotation = Quaternion.identity;
+
     }
 }
