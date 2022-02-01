@@ -6,8 +6,13 @@ using Oculus.Avatar2;
 
 public class GGRemoteLoopbackManager : MonoBehaviour
 {
-    [SerializeField] GGMetaAvatarEntity m_localAvatar;
-    [SerializeField] GGMetaAvatarEntity m_remoteAvatar;
+    [SerializeField] SampleAvatarEntity m_localAvatar;
+    [SerializeField] SampleAvatarEntity m_remoteAvatar;
+    [System.Serializable]
+    public class GGRemoteLoopbackManagerData
+    {
+        
+    }
     byte[] m_recordedBytes;
 
     private void LateUpdate()

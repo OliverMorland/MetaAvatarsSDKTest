@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using Oculus.Avatar2;
 using Photon.Pun;
+using System;
 
 public class GGMetaAvatarEntity : OvrAvatarEntity
 {
     [SerializeField] int m_avatarToUseInZipFolder = 2;
     PhotonView m_photonView;
-    byte[] m_streamedData;
+    List<byte[]> m_streamedDataList = new List<byte[]>();
+    int m_maxBytesToLog = 15;
     
 
     private void Start()
@@ -18,21 +20,22 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
         {
             SetIsLocal(true);
             _creationInfo.features = CAPI.ovrAvatar2EntityFeatures.Preset_Default;
-            //CreateEntity();
             SampleInputManager sampleInputManager = OvrAvatarManager.Instance.gameObject.GetComponent<SampleInputManager>();
             SetBodyTracking(sampleInputManager);
+            gameObject.name = "MyAvatar";
         }
         else
         {
             SetIsLocal(false);
             _creationInfo.features = CAPI.ovrAvatar2EntityFeatures.Preset_Remote;
-            //CreateEntity();
+            gameObject.name = "OtherAvatar";
         }
          
         if (IsLocal)
         {
             string[] zipPaths = new string[] { m_avatarToUseInZipFolder + "_rift.glb" };
             LoadAssetsFromZipSource(zipPaths);
+            
         }
         else
         {
@@ -45,8 +48,7 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
     {
         if (m_photonView.IsMine)
         {
-            byte [] bytes = RecordStreamData(activeStreamLod);
-            Debug.Log("Sending streamed data with bytes " + bytes.Length);
+            byte[] bytes = RecordStreamData(activeStreamLod);
             m_photonView.RPC("SetStreamData", RpcTarget.Others, bytes);
         }
     }
@@ -54,20 +56,44 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
     [PunRPC]
     public void SetStreamData(byte [] bytes)
     {
-        Debug.Log("Recieving Streamed data with bytes " + bytes.Length);
-        m_streamedData = bytes;
+        m_streamedDataList.Add(bytes);
+        RTDebug.Log("Streamed Data List count = " + m_streamedDataList.Count);
+        //LogFirstAndLastBytes();
+        //LogBytesContent(bytes);
+    }
+
+    void LogBytesContent(byte [] bytes)
+    {
+        for (int i = 0; i < m_maxBytesToLog; i++)
+        {
+            string bytesString = Convert.ToString(bytes[i], 2).PadLeft(8, '0');
+            Debug.Log($"bytesString " + bytesString);
+        }
+    }
+
+    void LogFirstAndLastBytes()
+    {
+        if (m_streamedDataList.Count > 0)
+        {
+            byte[] firstBytes = m_streamedDataList[0];
+            byte[] lastBytes = m_streamedDataList[m_streamedDataList.Count-1];
+            string firstBytesString = Convert.ToString(firstBytes[150], 2).PadLeft(8, '0');
+            string lastBytesString = Convert.ToString(lastBytes[150], 2).PadLeft(8, '0');
+            RTDebug.Log($"First bytes: {firstBytesString} Last Bytes {lastBytesString}");
+        }
     }
 
     private void Update()
     {
-        if (m_photonView.IsMine == false)
+        if (m_streamedDataList.Count > 0)
         {
-            Debug.Log("Applying streamed data");
-            ApplyStreamData(m_streamedData);
+            if (IsLocal == false)
+            {
+                ApplyStreamData(m_streamedDataList[0]);
+                m_streamedDataList.RemoveAt(0);
+            }
         }
     }
-
-
 
 
 }
