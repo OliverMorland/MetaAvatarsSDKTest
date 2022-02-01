@@ -4,6 +4,8 @@ using UnityEngine;
 using Photon.Pun;
 using UnityEngine.UI;
 using Oculus.Avatar2;
+using Oculus.Platform;
+using System;
 
 public class EnterRoom : MonoBehaviourPunCallbacks
 {
@@ -17,6 +19,8 @@ public class EnterRoom : MonoBehaviourPunCallbacks
     [SerializeField] float m_maxSpawnPos_x = 5f;
     [SerializeField] float m_minSpawnPos_z = -5f;
     [SerializeField] float m_maxSpawnPos_z = 5f;
+
+    [SerializeField] ulong m_userId;
 
     // Start is called before the first frame update
     void Start()
@@ -41,13 +45,52 @@ public class EnterRoom : MonoBehaviourPunCallbacks
     {
         string roomName = PhotonNetwork.CurrentRoom.Name;
         m_screenText.text = "Joined room with name " + roomName;
-        float rand_x = Random.Range(m_minSpawnPos_x, m_maxSpawnPos_x);
-        float rand_z = Random.Range(m_minSpawnPos_z, m_maxSpawnPos_z);
+        StartCoroutine(SetUserIdFromLoggedInUser());
+
+    }
+
+    IEnumerator SetUserIdFromLoggedInUser()
+    {
+        if (OvrPlatformInit.status == OvrPlatformInitStatus.NotStarted)
+        {
+            OvrPlatformInit.InitializeOvrPlatform();
+        }
+
+        while (OvrPlatformInit.status != OvrPlatformInitStatus.Succeeded)
+        {
+            if (OvrPlatformInit.status == OvrPlatformInitStatus.Failed)
+            {
+                Debug.LogError("OVR Platform failed to initialise");
+                yield break;
+            }
+            yield return null;
+        }
+
+        Users.GetLoggedInUser().OnComplete(message =>
+        {
+            if (message.IsError)
+            {
+                Debug.LogError("Getting Logged in user error " + message.GetError());
+            }
+            else
+            {
+                m_userId = message.Data.ID;
+                InstantiateNetworkedAvatar();
+            }
+        });
+    }
+
+    void InstantiateNetworkedAvatar()
+    {
+        float rand_x = UnityEngine.Random.Range(m_minSpawnPos_x, m_maxSpawnPos_x);
+        float rand_z = UnityEngine.Random.Range(m_minSpawnPos_z, m_maxSpawnPos_z);
         Vector3 spawnPos = new Vector3(rand_x, SPAWN_POS_Z, rand_z);
-        GameObject myAvatar = PhotonNetwork.Instantiate(AVATAR_PREFAB_NAME, spawnPos, Quaternion.identity);
+        Int64 userId = Convert.ToInt64(m_userId);
+        object[] objects = new object[1] { userId };
+        GameObject myAvatar = PhotonNetwork.Instantiate(AVATAR_PREFAB_NAME, spawnPos, Quaternion.identity, 0, objects);
         m_camera.transform.SetParent(myAvatar.transform);
         m_camera.transform.localPosition = Vector3.zero;
         m_camera.transform.localRotation = Quaternion.identity;
-
     }
+
 }

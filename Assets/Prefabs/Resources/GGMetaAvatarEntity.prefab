@@ -94,6 +94,7 @@ MonoBehaviour:
   useRenderLods: 1
   _isLocal: 1
   m_avatarToUseInZipFolder: 6
+  m_instantiationData: 0
 --- !u!114 &6514703084671911782
 MonoBehaviour:
   m_ObjectHideFlags: 0
