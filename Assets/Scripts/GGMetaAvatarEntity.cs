@@ -14,12 +14,17 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
     int m_maxBytesToLog = 15;
     [SerializeField] ulong m_instantiationData;
     float m_cycleStartTime = 0;
-    float m_intervalToSendData = 1f;
+    float m_intervalToSendData = 0.08f;
+
+    protected override void Awake()
+    {
+        ConfigureAvatarEntity();
+        base.Awake();
+    }
 
     private void Start()
     {
         m_instantiationData = GetUserIdFromPhotonInstantiationData();
-        ConfigureAvatarEntity();
         _userId = m_instantiationData;
         StartCoroutine(TryToLoadUser());
     }
@@ -33,6 +38,8 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
             _creationInfo.features = Oculus.Avatar2.CAPI.ovrAvatar2EntityFeatures.Preset_Default;
             SampleInputManager sampleInputManager = OvrAvatarManager.Instance.gameObject.GetComponent<SampleInputManager>();
             SetBodyTracking(sampleInputManager);
+            OvrAvatarLipSyncContext lipSyncInput = GameObject.FindObjectOfType<OvrAvatarLipSyncContext>();
+            SetLipSync(lipSyncInput);
             gameObject.name = "MyAvatar";
         }
         else
@@ -70,7 +77,6 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
         {
             byte[] bytes = RecordStreamData(activeStreamLod);
             m_photonView.RPC("RecieveStreamData", RpcTarget.Others, bytes);
-            Debug.Log("Sending Bytes");
         }
     }
 
@@ -78,7 +84,6 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
     public void RecieveStreamData(byte [] bytes)
     {
         m_streamedDataList.Add(bytes);
-        RTDebug.Log("Streamed Data List count = " + m_streamedDataList.Count);
     }
 
     void LogFirstFewBytesOf(byte [] bytes)
@@ -86,19 +91,6 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
         for (int i = 0; i < m_maxBytesToLog; i++)
         {
             string bytesString = Convert.ToString(bytes[i], 2).PadLeft(8, '0');
-            Debug.Log($"bytesString " + bytesString);
-        }
-    }
-
-    void LogFirstAndLastBytes()
-    {
-        if (m_streamedDataList.Count > 0)
-        {
-            byte[] firstBytes = m_streamedDataList[0];
-            byte[] lastBytes = m_streamedDataList[m_streamedDataList.Count-1];
-            string firstBytesString = Convert.ToString(firstBytes[150], 2).PadLeft(8, '0');
-            string lastBytesString = Convert.ToString(lastBytes[150], 2).PadLeft(8, '0');
-            RTDebug.Log($"First bytes: {firstBytesString} Last Bytes {lastBytesString}");
         }
     }
 
