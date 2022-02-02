@@ -13,11 +13,19 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
     List<byte[]> m_streamedDataList = new List<byte[]>();
     int m_maxBytesToLog = 15;
     [SerializeField] ulong m_instantiationData;
+    float m_cycleStartTime = 0;
+    float m_intervalToSendData = 1f;
 
     private void Start()
     {
         m_instantiationData = GetUserIdFromPhotonInstantiationData();
+        ConfigureAvatarEntity();
+        _userId = m_instantiationData;
+        StartCoroutine(TryToLoadUser());
+    }
 
+    void ConfigureAvatarEntity()
+    {
         m_photonView = GetComponent<PhotonView>();
         if (m_photonView.IsMine)
         {
@@ -33,21 +41,7 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
             _creationInfo.features = Oculus.Avatar2.CAPI.ovrAvatar2EntityFeatures.Preset_Remote;
             gameObject.name = "OtherAvatar";
         }
-        
-        if (IsLocal)
-        {
-            string[] zipPaths = new string[] { m_avatarToUseInZipFolder + "_rift.glb" };
-            LoadAssetsFromZipSource(zipPaths);
-        }
-        else
-        {
-            //string[] zipPaths = new string[] { m_avatarToUseInZipFolder + 1 + "_rift.glb" };
-            //LoadAssetsFromZipSource(zipPaths);
-            _userId = m_instantiationData;
-            StartCoroutine(TryToLoadUser());
-        }
     }
-
 
     IEnumerator TryToLoadUser()
     {
@@ -61,21 +55,33 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
 
     private void LateUpdate()
     {
+        float elapsedTime = Time.time - m_cycleStartTime;
+        if (elapsedTime > m_intervalToSendData)
+        {
+            RecordAndSendStreamDataIfMine();
+            m_cycleStartTime = Time.time;
+        }
+        
+    }
+
+    void RecordAndSendStreamDataIfMine()
+    {
         if (m_photonView.IsMine)
         {
             byte[] bytes = RecordStreamData(activeStreamLod);
-            m_photonView.RPC("SetStreamData", RpcTarget.Others, bytes);
+            m_photonView.RPC("RecieveStreamData", RpcTarget.Others, bytes);
+            Debug.Log("Sending Bytes");
         }
     }
 
     [PunRPC]
-    public void SetStreamData(byte [] bytes)
+    public void RecieveStreamData(byte [] bytes)
     {
         m_streamedDataList.Add(bytes);
-        RTDebug.Log("Streamed Data List count = " + m_streamedDataList.Count);;
+        RTDebug.Log("Streamed Data List count = " + m_streamedDataList.Count);
     }
 
-    void LogBytesContent(byte [] bytes)
+    void LogFirstFewBytesOf(byte [] bytes)
     {
         for (int i = 0; i < m_maxBytesToLog; i++)
         {
@@ -102,7 +108,11 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
         {
             if (IsLocal == false)
             {
-                ApplyStreamData(m_streamedDataList[0]);
+                byte[] firstBytesInList = m_streamedDataList[0];
+                if (firstBytesInList != null)
+                {
+                    ApplyStreamData(firstBytesInList);
+                }
                 m_streamedDataList.RemoveAt(0);
             }
         }

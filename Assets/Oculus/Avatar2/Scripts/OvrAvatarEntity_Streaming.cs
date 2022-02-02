@@ -213,11 +213,14 @@ namespace Oculus.Avatar2
 
         public void ApplyStreamData(byte[] data)
         {
+            Debug.Log("ApplyStreamData with data of length " + data.Length);
             if (!_VerifyCanApplyStreaming()) { return; }
 
+            Debug.Log("About to set Handle");
             var handle = GCHandle.Alloc(data, GCHandleType.Pinned);
             try
             {
+                Debug.Log("About to ExecuteApplyStreamData");
                 _ExecuteApplyStreamData(handle.AddrOfPinnedObject(), (UInt32)data.Length);
             }
             finally
@@ -283,8 +286,13 @@ namespace Oculus.Avatar2
         {
             OvrAvatarLog.Assert(data != IntPtr.Zero);
             OvrAvatarLog.Assert(size > 0);
-
+            
             var result = CAPI.ovrAvatar2Streaming_DeserializeRecording(entityId, data, size);
+            Debug.Log("Deserialised Recording Stream");
+            if (result.IsSuccess())
+            {
+                Debug.Log("Result Is Success");
+            }
             if (!result.EnsureSuccessOrLogVerbose(
                 CAPI.ovrAvatar2Result.DeserializationPending, "skeleton is not loaded",
                 "ovrAvatar2Streaming_DeserializeRecording", logScope, this))
