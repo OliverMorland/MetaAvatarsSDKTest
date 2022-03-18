@@ -25,28 +25,9 @@ public class EnterRoom : MonoBehaviourPunCallbacks
     // Start is called before the first frame update
     void Start()
     {
-        PhotonNetwork.ConnectUsingSettings();
-        m_screenText.text = "Connecting to Server";
-    }
-
-    public override void OnConnectedToMaster()
-    {
-        PhotonNetwork.JoinLobby();
-        m_screenText.text = "Connecting to Lobby";
-    }
-
-    public override void OnJoinedLobby()
-    {
-        m_screenText.text = "Creating Room";
-        PhotonNetwork.JoinOrCreateRoom(ROOM_NAME, null, null);
-    }
-
-    public override void OnJoinedRoom()
-    {
-        string roomName = PhotonNetwork.CurrentRoom.Name;
-        m_screenText.text = "Joined room with name " + roomName;
         StartCoroutine(SetUserIdFromLoggedInUser());
-
+        StartCoroutine(ConnectToPhotonRoomOnceUserIdIsFound());
+        StartCoroutine(InstantiateNetworkedAvatarOnceInRoom());
     }
 
     IEnumerator SetUserIdFromLoggedInUser()
@@ -75,9 +56,52 @@ public class EnterRoom : MonoBehaviourPunCallbacks
             else
             {
                 m_userId = message.Data.ID;
-                InstantiateNetworkedAvatar();
             }
         });
+    }
+
+    IEnumerator ConnectToPhotonRoomOnceUserIdIsFound()
+    {
+        while (m_userId == 0)
+        {
+            Debug.Log("Waiting for User id to be set before connecting to room");  
+            yield return null;
+        }
+        ConnectToPhotonRoom();
+    }
+
+    void ConnectToPhotonRoom()
+    {
+        PhotonNetwork.ConnectUsingSettings();
+        m_screenText.text = "Connecting to Server";
+    }
+
+    public override void OnConnectedToMaster()
+    {
+        PhotonNetwork.JoinLobby();
+        m_screenText.text = "Connecting to Lobby";
+    }
+
+    public override void OnJoinedLobby()
+    {
+        m_screenText.text = "Creating Room";
+        PhotonNetwork.JoinOrCreateRoom(ROOM_NAME, null, null);
+    }
+
+    public override void OnJoinedRoom()
+    {
+        string roomName = PhotonNetwork.CurrentRoom.Name;
+        m_screenText.text = "Joined room with name " + roomName;
+    }
+
+    IEnumerator InstantiateNetworkedAvatarOnceInRoom()
+    {
+        while (PhotonNetwork.InRoom == false)
+        {
+            Debug.Log("Waiting to be in room before intantiating avatar");
+            yield return null;
+        }
+        InstantiateNetworkedAvatar();
     }
 
     void InstantiateNetworkedAvatar()
