@@ -42,6 +42,7 @@ public class EnterRoom : MonoBehaviourPunCallbacks
             if (OvrPlatformInit.status == OvrPlatformInitStatus.Failed)
             {
                 Debug.LogError("OVR Platform failed to initialise");
+                m_screenText.text = "OVR Platform failed to initialise";
                 yield break;
             }
             yield return null;
