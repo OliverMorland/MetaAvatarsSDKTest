@@ -86,14 +86,6 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
         m_streamedDataList.Add(bytes);
     }
 
-    void LogFirstFewBytesOf(byte [] bytes)
-    {
-        for (int i = 0; i < m_maxBytesToLog; i++)
-        {
-            string bytesString = Convert.ToString(bytes[i], 2).PadLeft(8, '0');
-        }
-    }
-
     private void Update()
     {
         if (m_streamedDataList.Count > 0)

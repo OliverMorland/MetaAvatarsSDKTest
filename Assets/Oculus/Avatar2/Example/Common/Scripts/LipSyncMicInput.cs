@@ -200,6 +200,7 @@ public class LipSyncMicInput : MonoBehaviour
         return true;
     }
 
+    [ContextMenu("Start Mic")]
     private void StartMicrophone_Internal()
     {
         Debug.Log($"Starting microphone recording with frequency {_micFrequency}");
@@ -263,6 +264,9 @@ public class LipSyncMicInput : MonoBehaviour
         
         active = true;
 
+        Debug.Log("CanStartMic: " + CanStartMic());
+        Debug.Log("isMicrophoneRecording: " + Microphone.IsRecording(_selectedDevice));
+        Debug.Log("Will Start Mic: " + (CanStartMic() && !Microphone.IsRecording(_selectedDevice)));
         if (CanStartMic() && !Microphone.IsRecording(_selectedDevice))
         {
             StartMicrophone_Internal();

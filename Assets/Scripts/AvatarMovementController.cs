@@ -24,10 +24,23 @@ public class AvatarMovementController : MonoBehaviour
         if (m_photonView != null && m_photonView.IsMine)
         {
             Vector2 leftThumbstickPos = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick);
-            Vector3 velocity = (GetVelocityFromArrowKeysInput() + new Vector3(leftThumbstickPos.x, 0, leftThumbstickPos.y)) * m_speedMultiplier;
+            Vector3 velocity = (GetVelocityFromArrowKeysInput() + GetVelocityFromOVRInput(leftThumbstickPos) * m_speedMultiplier);
             Vector3 displacement = velocity * Time.deltaTime;
             transform.position += displacement; 
         }
+    }
+
+    Vector3 GetVelocityFromOVRInput(Vector2 thumbstickPos)
+    {
+        Vector3 cameraFwd = GetCameraForwardDirection();
+        Vector3 cameraFwdOnXZPlane = new Vector3(cameraFwd.x, 0, cameraFwd.z).normalized;
+        return cameraFwdOnXZPlane * thumbstickPos.y;
+    }
+
+    Vector3 GetCameraForwardDirection()
+    {
+        Camera camera = transform.GetComponentInChildren<Camera>();
+        return camera.transform.forward;
     }
 
 

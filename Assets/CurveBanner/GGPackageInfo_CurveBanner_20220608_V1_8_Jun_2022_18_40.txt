@@ -1,0 +1,7 @@
+ExportGGPackage V 1.0
+Export Package: D:/temp/CurveBanner_20220608_V1.unitypackage
+Source Dir: Assets/CurveBanner
+Source Repo: g:/github/casino_art
+Source Repo Branch: 3Dassets_Shirly
+Repo Url: https://github.com/GlimpseGroup/Casino_Art.git
+Date/Time of Export: 8 Jun 2022 18:40

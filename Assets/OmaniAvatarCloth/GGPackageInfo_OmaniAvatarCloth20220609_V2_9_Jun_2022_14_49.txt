@@ -1,0 +1,7 @@
+ExportGGPackage V 1.0
+Export Package: D:/Temp/OmaniAvatarCloth20220609_V2.unitypackage
+Source Dir: Assets/OmaniAvatarCloth
+Source Repo: g:/github/msx_art
+Source Repo Branch: 3Dassets_shirly
+Repo Url: https://github.com/GlimpseGroup/MSX_Art.git
+Date/Time of Export: 9 Jun 2022 14:49
