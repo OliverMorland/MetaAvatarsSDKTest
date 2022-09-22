@@ -2,8 +2,10 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.Threading;
+using ExitGames.Client.Photon;
 using Oculus.Avatar2;
 using UnityEngine;
+using UnityEngine.Profiling;
 using Debug = UnityEngine.Debug;
 
 

@@ -1,3 +1,4 @@
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -38,8 +39,8 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
             _creationInfo.features = Oculus.Avatar2.CAPI.ovrAvatar2EntityFeatures.Preset_Default;
             SampleInputManager sampleInputManager = OvrAvatarManager.Instance.gameObject.GetComponent<SampleInputManager>();
             SetBodyTracking(sampleInputManager);
-            OvrAvatarLipSyncContext lipSyncInput = GameObject.FindObjectOfType<OvrAvatarLipSyncContext>();
-            SetLipSync(lipSyncInput);
+            //OvrAvatarLipSyncContext lipSyncContext = GameObject.FindObjectOfType<OvrAvatarLipSyncContext>();
+            //SetLipSync(lipSyncContext);
             gameObject.name = "MyAvatar";
         }
         else
@@ -109,5 +110,4 @@ public class GGMetaAvatarEntity : OvrAvatarEntity
         Int64 data_as_int = (Int64)instantiationData[0];
         return Convert.ToUInt64(data_as_int);
     }
-
 }

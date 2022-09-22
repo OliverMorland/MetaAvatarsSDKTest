@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: GlimpseGroup
-  productName: MetaAvatarsTest
+  productName: MetaAvatars Test
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}
@@ -135,9 +135,7 @@ PlayerSettings:
     16:9: 1
     Others: 1
   bundleVersion: 4.37
-  preloadedAssets:
-  - {fileID: 11400000, guid: 9d5c73d52d22e414e98d1177a648f3a2, type: 2}
-  - {fileID: -385030334972892338, guid: 8e353b6fc503aca4081d515010aa8d37, type: 2}
+  preloadedAssets: []
   metroInputSource: 0
   wsaTransparentSwapchain: 0
   m_HolographicPauseOnTrackingLoss: 1
