@@ -96,8 +96,7 @@ MonoBehaviour:
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  m_avatarAssetPathToLoad:
-  - 0_rift.glb
+  m_instantiationData: 0
 --- !u!114 &6514703084671911782
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -110,7 +109,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eebcebae4cdcadb4c8d775d7b3b46fc4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_speedMultiplier: 1
+  m_speedMultiplier: 3
 --- !u!114 &6403576762213824985
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,13 +1,10 @@
 {
-    "name": "PhotonVoice.API",
+    "name": "MicrophoneDebugging",
     "rootNamespace": "",
-    "references": [
-        "PhotonRealtime",
-        "MicrophoneDebugging"
-    ],
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
-    "allowUnsafeCode": true,
+    "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,

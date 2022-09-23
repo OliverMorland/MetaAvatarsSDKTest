@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using Oculus.Avatar2;
 using Photon.Pun;
+using Photon.Voice.PUN;
+using Photon.Voice.Unity;
+using System;
 
 public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
 {
-    [SerializeField] string [] m_avatarAssetPathToLoad;
+    [SerializeField] ulong m_instantiationData;
     PhotonView m_photonView;
 
     protected override void Awake()
@@ -17,7 +20,9 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
 
     void Start()
     {
-        LoadAssetsFromZipSource(m_avatarAssetPathToLoad);
+        m_instantiationData = GetUserIdFromPhotonInstantiationData();
+        _userId = m_instantiationData;
+        StartCoroutine(TryToLoadUser());
     }
 
     void ConfigureAvatarEntity()
@@ -29,8 +34,8 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
             _creationInfo.features = Oculus.Avatar2.CAPI.ovrAvatar2EntityFeatures.Preset_Default;
             SampleInputManager sampleInputManager = OvrAvatarManager.Instance.gameObject.GetComponent<SampleInputManager>();
             SetBodyTracking(sampleInputManager);
-            OvrAvatarLipSyncContext lipSyncInput = GameObject.FindObjectOfType<OvrAvatarLipSyncContext>();
-            SetLipSync(lipSyncInput);
+            OvrAvatarLipSyncContext lipSyncInputContext = GameObject.FindObjectOfType<OvrAvatarLipSyncContext>();
+            SetLipSync(lipSyncInputContext);
             gameObject.name = "MyAvatar";
         }
         else
@@ -39,6 +44,24 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
             _creationInfo.features = Oculus.Avatar2.CAPI.ovrAvatar2EntityFeatures.Preset_Remote;
             gameObject.name = "OtherAvatar";
         }
+    }
+
+    ulong GetUserIdFromPhotonInstantiationData()
+    {
+        PhotonView photonView = GetComponent<PhotonView>();
+        object[] instantiationData = photonView.InstantiationData;
+        Int64 data_as_int = (Int64)instantiationData[0];
+        return Convert.ToUInt64(data_as_int);
+    }
+
+    IEnumerator TryToLoadUser()
+    {
+        var hasAvatarRequest = OvrAvatarManager.Instance.UserHasAvatarAsync(_userId);
+        while (hasAvatarRequest.IsCompleted == false)
+        {
+            yield return null;
+        }
+        LoadUser();
     }
 
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)

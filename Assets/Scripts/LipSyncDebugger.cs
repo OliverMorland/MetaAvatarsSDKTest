@@ -25,7 +25,7 @@ public class LipSyncDebugger : MonoBehaviour
     {
         Debug.Log("Start Lip Sync");
         LipSyncMicInput lipSyncMic = FindObjectOfType<LipSyncMicInput>();
-        lipSyncMic.StartMicrophone();
+        lipSyncMic.StartMicrophone_Internal();
     }
 
     void OnBButtonPressed()
@@ -40,12 +40,53 @@ public class LipSyncDebugger : MonoBehaviour
     {
         Debug.Log("Stop Lip Sync");
         LipSyncMicInput lipSyncMic = FindObjectOfType<LipSyncMicInput>();
-        lipSyncMic.StartMicrophone();
+        lipSyncMic.StopMicrophone_Internal();
     }
 
     void OnXButtonPressed()
     {
         if (OVRInput.GetDown(OVRInput.RawButton.X))
+        {
+            StopRecorder();
+        }
+    }
+
+    void PrintRecorderAudioClipName()
+    {
+        Recorder recorder = FindObjectOfType<Recorder>();
+        AudioClip audioClip = recorder.AudioClip;
+        if (audioClip == null)
+        {
+            Debug.Log("Recorder has no AudioClip");
+        }
+        else
+        {
+            Debug.Log("Audio Clip Name: " + audioClip.name);
+        }
+    }
+
+    void SetLipSyncAudioClipToEqualRecorders()
+    {
+        Recorder recorder = FindObjectOfType<Recorder>();
+        AudioClip audioClip = recorder.AudioClip;
+        LipSyncMicInput lipSyncMicInput = FindObjectOfType<LipSyncMicInput>();
+        lipSyncMicInput.audioSource.clip = audioClip;
+    }
+
+    void SetLipSyncAudioCLipToEqualSpeakers()
+    {
+        Debug.Log("OLILOG Setting Lip Sync Audio Clip");
+        Speaker speaker = FindObjectOfType<Speaker>();
+        AudioSource audioSource = speaker.GetComponent<AudioSource>();
+        LipSyncMicInput lipSyncMicInput = FindObjectOfType<LipSyncMicInput>();
+        lipSyncMicInput.audioSource.Stop();
+        lipSyncMicInput.audioSource.clip = audioSource.clip;
+        lipSyncMicInput.audioSource.Play();
+    }
+
+    void OnYButtonPressed()
+    {
+        if (OVRInput.GetDown(OVRInput.RawButton.Y))
         {
             StartRecorder();
         }
@@ -56,14 +97,6 @@ public class LipSyncDebugger : MonoBehaviour
         Debug.Log("Start Recorder");
         Recorder recorder = FindObjectOfType<Recorder>();
         recorder.StartRecording();
-    }
-
-    void OnYButtonPressed()
-    {
-        if (OVRInput.GetDown(OVRInput.RawButton.X))
-        {
-            StopRecorder();
-        }
     }
 
     void StopRecorder()

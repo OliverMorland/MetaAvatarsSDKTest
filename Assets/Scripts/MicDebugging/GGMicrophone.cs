@@ -1,0 +1,118 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class GGMicrophone : MonoBehaviour
+{
+    [SerializeField] AudioClip m_audioClip;
+    [Range(0f, 1f)] [SerializeField] float m_micInputVolume = 0f;
+    [SerializeField] float m_microphoneSensitivity = 50f;
+    [SerializeField] float m_threshold = 0.1f;
+    int m_sampleWindow = 64;
+
+    static private GGMicrophone m_instance;
+    static public GGMicrophone Instance
+    {
+        get 
+        { 
+            return m_instance; 
+        }
+    }
+
+    private void Awake()
+    {
+        if (m_instance == null)
+        {
+            m_instance = this;
+        }
+        else
+        {
+            Destroy(this.gameObject);
+        }
+    }
+
+    [ContextMenu("Start Microphone")]
+    public void StartMicrophone()
+    {
+        string microphoneName = GetMicrophoneDeviceName();
+        m_audioClip = Microphone.Start(microphoneName, true, 10, AudioSettings.outputSampleRate);
+        m_audioClip.name = "GGMicAudioClip";
+    }
+
+    public void StopMicrophone()
+    {
+        string microphoneName = GetMicrophoneDeviceName();
+        Microphone.End(microphoneName);
+    }
+
+    public bool IsRecording()
+    {
+        string microphoneName = GetMicrophoneDeviceName();
+        return Microphone.IsRecording(microphoneName);
+    }
+
+    public int GetPosition()
+    {
+        string microphoneName = GetMicrophoneDeviceName();
+        return Microphone.GetPosition(microphoneName);
+    }
+
+    string GetMicrophoneDeviceName()
+    {
+        return Microphone.devices[0];
+    }
+
+    public AudioClip GetMicrophoneAudioClip()
+    {
+        return m_audioClip;
+    }
+
+    private void Start()
+    {
+        StartMicrophone();
+    }
+
+    private void Update()
+    {
+        if (Input.GetKeyUp(KeyCode.Space))
+        {
+            StartMicrophone();
+        }
+
+        if (m_audioClip != null)
+        {
+            float micInputVolume = GetVolumeFromMicrophone() * m_microphoneSensitivity;
+            if (micInputVolume < m_threshold)
+            {
+                micInputVolume = 0;
+            }
+            m_micInputVolume = micInputVolume;
+        }
+    }
+
+    float GetVolumeFromMicrophone()
+    {
+        return GetVolumeFromAudioClip(Microphone.GetPosition(Microphone.devices[0]), m_audioClip);
+    }
+
+    float GetVolumeFromAudioClip(int clipPosition, AudioClip audioClip)
+    {
+        if (clipPosition - m_sampleWindow < 0)
+        {
+            return 0;
+        }
+
+        float[] data = new float[m_sampleWindow];
+        audioClip.GetData(data, clipPosition - m_sampleWindow);
+
+        float totalVolume = 0;
+        for (int i = 0; i < data.Length; i++)
+        {
+            totalVolume += Mathf.Abs(data[i]);
+        }
+
+        float averageVolume = totalVolume / m_sampleWindow;
+        return averageVolume;
+    }
+
+}

@@ -2,8 +2,6 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.Threading;
-using ExitGames.Client.Photon;
-using Oculus.Avatar2;
 using UnityEngine;
 using UnityEngine.Profiling;
 using Debug = UnityEngine.Debug;
@@ -23,7 +21,6 @@ public class LipSyncMicInput : MonoBehaviour
     private const string logScope = "micInput";
     
     // Serialized Members
-    
     [Tooltip("Manual specification of Audio Source. Default will use any attached to the same object.")]
     [SerializeField] private AudioSource _audioSource;
     
@@ -203,7 +200,7 @@ public class LipSyncMicInput : MonoBehaviour
     }
 
     [ContextMenu("Start Mic")]
-    private void StartMicrophone_Internal()
+    public void StartMicrophone_Internal()
     {
         Debug.Log($"Starting microphone recording with frequency {_micFrequency}");
 
@@ -230,7 +227,7 @@ public class LipSyncMicInput : MonoBehaviour
         _audioSource.Play();
     }
 
-    private void StopMicrophone_Internal()
+    public void StopMicrophone_Internal()
     {
         if (micSelected == false) return;
 
@@ -243,7 +240,6 @@ public class LipSyncMicInput : MonoBehaviour
         {
             _audioSource.Stop();
         }
-
         Microphone.End(_selectedDevice);
     }
     
