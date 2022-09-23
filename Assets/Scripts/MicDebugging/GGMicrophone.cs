@@ -1,11 +1,18 @@
+using ExitGames.Client.Photon;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 public class GGMicrophone : MonoBehaviour
 {
     [SerializeField] AudioClip m_audioClip;
     [Range(0f, 1f)] [SerializeField] float m_micInputVolume = 0f;
+    [Range(0, 1000000)] [SerializeField] int m_microphonePosition;
+    [SerializeField] string m_currentMicrophoneDevice;
+    [SerializeField] string[] m_microphoneDevices;
+    [SerializeField] bool m_isRecording;
+    [SerializeField] int m_audioClipId;
     [SerializeField] float m_microphoneSensitivity = 50f;
     [SerializeField] float m_threshold = 0.1f;
     int m_sampleWindow = 64;
@@ -39,6 +46,7 @@ public class GGMicrophone : MonoBehaviour
         m_audioClip.name = "GGMicAudioClip";
     }
 
+    [ContextMenu("Stop Microphone")]
     public void StopMicrophone()
     {
         string microphoneName = GetMicrophoneDeviceName();
@@ -87,7 +95,12 @@ public class GGMicrophone : MonoBehaviour
                 micInputVolume = 0;
             }
             m_micInputVolume = micInputVolume;
+            m_audioClipId = m_audioClip.GetInstanceID();
         }
+
+        ShowMicrophoneDevices();
+        m_microphonePosition = GetPosition();
+        m_isRecording = IsRecording();
     }
 
     float GetVolumeFromMicrophone()
@@ -113,6 +126,36 @@ public class GGMicrophone : MonoBehaviour
 
         float averageVolume = totalVolume / m_sampleWindow;
         return averageVolume;
+    }
+
+    void ShowMicrophoneDevices()
+    {
+        m_currentMicrophoneDevice = GetMicrophoneDeviceName();
+        m_microphoneDevices = Microphone.devices;
+    }
+
+    [SerializeField] int m_photonAudioClipId;
+    public void SetPhotonAudioClipId(int clipId)
+    {
+        m_photonAudioClipId = clipId;
+    }
+
+    [SerializeField] AudioClip m_photonAudioClip;
+    public void SetPhotonAudioClipName(AudioClip clip)
+    {
+        m_photonAudioClip = clip;
+    }
+
+    [SerializeField] int m_LipSyncAudioClipId;
+    public void SetLipSyncAudioClipId(int clipId)
+    {
+        m_LipSyncAudioClipId = clipId;
+    }
+
+    [SerializeField] AudioClip m_LipSyncAudioClip;
+    public void SetLipSyncAudioClipName(AudioClip clip)
+    {
+        m_LipSyncAudioClip = clip;
     }
 
 }

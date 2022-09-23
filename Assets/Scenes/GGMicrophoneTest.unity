@@ -237,8 +237,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_audioClip: {fileID: 0}
   m_micInputVolume: 0
-  m_microphoneSensitivity: 100
-  m_threshold: 0.05
+  m_microphonePosition: 0
+  m_currentMicrophoneDevice: 
+  m_microphoneDevices: []
+  m_isRecording: 0
+  m_microphoneSensitivity: 20
+  m_threshold: 0.15
 --- !u!4 &955677729
 Transform:
   m_ObjectHideFlags: 0

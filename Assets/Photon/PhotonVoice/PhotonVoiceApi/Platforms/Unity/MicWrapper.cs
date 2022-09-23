@@ -69,6 +69,12 @@ namespace Photon.Voice.Unity
 
         public bool Read(float[] buffer)
         {
+            if (mic != null)
+            {
+                GGMicrophone.Instance.SetPhotonAudioClipId(mic.GetInstanceID());
+                GGMicrophone.Instance.SetPhotonAudioClipName(mic);
+            }
+
             if (Error != null)
             {
                 return false;

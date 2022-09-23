@@ -153,6 +153,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_audioClip: {fileID: 0}
+  m_audioClipId: 0
 --- !u!4 &272742519
 Transform:
   m_ObjectHideFlags: 0
@@ -488,7 +489,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 59f7a8b37a1522f44967df8360d1c643, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_microphoneVolumeDetector: {fileID: 1972444908}
+  m_microphoneVolumeDetector: {fileID: 272742518}
   m_minScale: {x: 1, y: 1, z: 1}
   m_maxScale: {x: 3, y: 3, z: 3}
   m_loudnessSensitivity: 10
@@ -599,6 +600,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_audioClip: {fileID: 0}
+  m_audioClipId: 0
 --- !u!4 &1972444909
 Transform:
   m_ObjectHideFlags: 0

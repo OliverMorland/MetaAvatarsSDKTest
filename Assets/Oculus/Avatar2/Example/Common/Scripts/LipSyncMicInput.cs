@@ -97,6 +97,10 @@ public class LipSyncMicInput : MonoBehaviour
         }
 
         ProcessMicActivity();
+
+        int clipId = _audioSource.GetInstanceID();
+        GGMicrophone.Instance.SetLipSyncAudioClipId(clipId);
+        GGMicrophone.Instance.SetLipSyncAudioClipName(_audioSource.clip);
     }
 
     // Events

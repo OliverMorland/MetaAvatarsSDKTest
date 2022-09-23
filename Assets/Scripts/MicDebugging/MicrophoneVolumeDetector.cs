@@ -9,12 +9,21 @@ using ReadOnlyAttribute = Unity.Collections.ReadOnlyAttribute;
 public class MicrophoneVolumeDetector : MonoBehaviour
 {
     [ReadOnly] [SerializeField] AudioClip m_audioClip;
+    [SerializeField] int m_audioClipId;
     int m_sampleWindow = 64;
     public List<AudioClipUpdatable> m_audioClipUpdatablesList = new List<AudioClipUpdatable>();
 
     private void Start()
     {
        m_audioClip = GetMicrophoneAudioClip();
+    }
+
+    private void Update()
+    {
+        if (m_audioClip != null)
+        {
+            m_audioClipId = m_audioClip.GetInstanceID();
+        }
     }
 
     [ContextMenu("Get Microphone Audio Clip")]
@@ -31,6 +40,13 @@ public class MicrophoneVolumeDetector : MonoBehaviour
     {
         string microphoneName = Microphone.devices[0];
         return Microphone.Start(microphoneName, true, 10, AudioSettings.outputSampleRate);
+    }
+
+    [ContextMenu("Stop Microphone")]
+    void StopMicrophone()
+    {
+        string microphoneName = Microphone.devices[0];
+        Microphone.End(microphoneName);
     }
 
     public float GetVolumeFromMicrophone()
