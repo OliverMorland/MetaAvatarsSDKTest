@@ -267,6 +267,9 @@ MonoBehaviour:
   m_threshold: 0.1
   m_photonAudioClipId: 0
   m_photonAudioClip: {fileID: 0}
+  m_LipSyncAudioClipId: 0
+  m_LipSyncAudioClip: {fileID: 0}
+  m_LipSyncMicName: 
 --- !u!4 &442606288
 Transform:
   m_ObjectHideFlags: 0
@@ -420,6 +423,24 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 5
   m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
+--- !u!1 &509302220 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2430523750807860354, guid: c019572605bc29e42b3ed5a058599618,
+    type: 3}
+  m_PrefabInstance: {fileID: 1024290846}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &509302221
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 509302220}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d6ce42d79cdd434f8598dc6d154e7b4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &715665648
 GameObject:
   m_ObjectHideFlags: 0
@@ -458,7 +479,7 @@ MonoBehaviour:
   unityMicrophoneDevice: 
   photonMicrophoneDeviceId: 0
   interestGroup: 0
-  debugEchoMode: 0
+  debugEchoMode: 1
   reliableMode: 0
   encrypt: 0
   transmitEnabled: 1
@@ -679,6 +700,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_Name
       value: LipSyncInput
+      objectReference: {fileID: 0}
+    - target: {fileID: 2430523750807860364, guid: c019572605bc29e42b3ed5a058599618,
+        type: 3}
+      propertyPath: _preferOculusMic
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2430523750807860366, guid: c019572605bc29e42b3ed5a058599618,
         type: 3}

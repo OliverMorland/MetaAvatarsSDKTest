@@ -43,7 +43,8 @@ public class GGMicrophone : MonoBehaviour
     {
         string microphoneName = GetMicrophoneDeviceName();
         m_audioClip = Microphone.Start(microphoneName, true, 10, AudioSettings.outputSampleRate);
-        m_audioClip.name = "GGMicAudioClip";
+        string clipId = m_audioClip.GetInstanceID().ToString();
+        m_audioClip.name = "GGMicAudioClip_" + clipId;
     }
 
     [ContextMenu("Stop Microphone")]
@@ -82,11 +83,6 @@ public class GGMicrophone : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyUp(KeyCode.Space))
-        {
-            StartMicrophone();
-        }
-
         if (m_audioClip != null)
         {
             float micInputVolume = GetVolumeFromMicrophone() * m_microphoneSensitivity;
@@ -134,28 +130,28 @@ public class GGMicrophone : MonoBehaviour
         m_microphoneDevices = Microphone.devices;
     }
 
-    [SerializeField] int m_photonAudioClipId;
-    public void SetPhotonAudioClipId(int clipId)
-    {
-        m_photonAudioClipId = clipId;
-    }
-
     [SerializeField] AudioClip m_photonAudioClip;
     public void SetPhotonAudioClipName(AudioClip clip)
     {
         m_photonAudioClip = clip;
     }
 
-    [SerializeField] int m_LipSyncAudioClipId;
-    public void SetLipSyncAudioClipId(int clipId)
+    [SerializeField] string m_photonMicName;
+    public void SetPhotonMicName(string photonMicName)
     {
-        m_LipSyncAudioClipId = clipId;
+        m_photonMicName = photonMicName;
     }
 
     [SerializeField] AudioClip m_LipSyncAudioClip;
     public void SetLipSyncAudioClipName(AudioClip clip)
     {
         m_LipSyncAudioClip = clip;
+    }
+
+    [SerializeField] string m_LipSyncMicName;
+    public void SetLipSyncMicName(string deviceName)
+    {
+        m_LipSyncMicName = deviceName;
     }
 
 }

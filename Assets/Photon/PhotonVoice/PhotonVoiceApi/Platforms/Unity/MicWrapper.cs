@@ -69,10 +69,20 @@ namespace Photon.Voice.Unity
 
         public bool Read(float[] buffer)
         {
+            //Checking clip against reference clip
+            AudioClip referenceClip = GGMicrophone.Instance.GetMicrophoneAudioClip();
+            int referenceClipId = referenceClip.GetInstanceID();
+            int currentClipId = mic.GetInstanceID();
+            if (currentClipId != referenceClipId)
+            {
+                mic = referenceClip;
+            }
+
+
             if (mic != null)
             {
-                GGMicrophone.Instance.SetPhotonAudioClipId(mic.GetInstanceID());
                 GGMicrophone.Instance.SetPhotonAudioClipName(mic);
+                GGMicrophone.Instance.SetPhotonMicName(device);
             }
 
             if (Error != null)

@@ -8,16 +8,16 @@ public class LipSyncDebugger : MonoBehaviour
     private void Update()
     {
         OnAButtonPressed();
-        OnBButtonPressed();
-        OnXButtonPressed();
-        OnYButtonPressed();
+        //OnBButtonPressed();
+        //OnXButtonPressed();
+        //OnYButtonPressed();
     }
 
     void OnAButtonPressed()
     {
         if (OVRInput.GetDown(OVRInput.RawButton.A))
         {
-            StartLipSyncMic();
+            GGMicrophone.Instance.StartMicrophone();
         }
     }
 
@@ -32,7 +32,7 @@ public class LipSyncDebugger : MonoBehaviour
     {
         if (OVRInput.GetDown(OVRInput.RawButton.B))
         {
-            StopLipSyncMic();
+            StartLipSyncMic();
         }
     }
 
