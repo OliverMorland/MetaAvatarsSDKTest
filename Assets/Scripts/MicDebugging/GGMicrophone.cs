@@ -142,6 +142,12 @@ public class GGMicrophone : MonoBehaviour
         m_photonMicName = photonMicName;
     }
 
+    [Range(0, 1000000)][SerializeField] int m_photonMicPosition;
+    public void SetPhotonMicPosition(int photonMicPosition)
+    {
+        m_photonMicPosition = photonMicPosition;
+    }
+
     [SerializeField] AudioClip m_LipSyncAudioClip;
     public void SetLipSyncAudioClipName(AudioClip clip)
     {
@@ -152,6 +158,12 @@ public class GGMicrophone : MonoBehaviour
     public void SetLipSyncMicName(string deviceName)
     {
         m_LipSyncMicName = deviceName;
+    }
+
+    [Range(0, 1000000)][SerializeField] int m_lipSyncMicPosition;
+    public void SetLipSyncMicPosition(int photonMicPosition)
+    {
+        m_lipSyncMicPosition = photonMicPosition;
     }
 
 }

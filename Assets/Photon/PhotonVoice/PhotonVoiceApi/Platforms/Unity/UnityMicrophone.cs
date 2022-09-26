@@ -29,8 +29,8 @@
             #if UNITY_WEBGL
             throw new NotImplementedException("Unity Microphone not supported on WebGL");
             #else
-            //Microphone.End(deviceName);
-            GGMicrophone.Instance.StopMicrophone();
+            Microphone.End(deviceName);
+            //GGMicrophone.Instance.StopMicrophone();
             #endif
         }
         
@@ -45,9 +45,10 @@
 
         public static int GetPosition(string deviceName)
         {
-            #if UNITY_WEBGL
+#if UNITY_WEBGL
             throw new NotImplementedException("Unity Microphone not supported on WebGL");
-            #else
+#else
+            GGMicrophone.Instance.SetPhotonMicPosition(GGMicrophone.Instance.GetPosition());
             //return Microphone.GetPosition(deviceName);
             return GGMicrophone.Instance.GetPosition();
             #endif
@@ -58,8 +59,8 @@
 #if UNITY_WEBGL
             return false;
 #else
-            //return Microphone.IsRecording(deviceName);
-            return GGMicrophone.Instance.IsRecording();
+            return Microphone.IsRecording(deviceName);
+            //return GGMicrophone.Instance.IsRecording();
             #endif
         }
 
@@ -68,8 +69,8 @@
 #if UNITY_WEBGL
             throw new NotImplementedException("Unity Microphone not supported on WebGL");
 #else
-            //return Microphone.Start(deviceName, loop, lengthSec, frequency);
-            return GGMicrophone.Instance.GetMicrophoneAudioClip();
+            return Microphone.Start(deviceName, loop, lengthSec, frequency);
+            //return GGMicrophone.Instance.GetMicrophoneAudioClip();
             #endif
         }
     }

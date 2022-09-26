@@ -8,9 +8,9 @@ public class LipSyncDebugger : MonoBehaviour
     private void Update()
     {
         OnAButtonPressed();
-        //OnBButtonPressed();
-        //OnXButtonPressed();
-        //OnYButtonPressed();
+        OnBButtonPressed();
+        OnXButtonPressed();
+        OnYButtonPressed();
     }
 
     void OnAButtonPressed()

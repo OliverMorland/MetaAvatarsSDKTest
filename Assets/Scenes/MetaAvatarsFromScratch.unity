@@ -263,13 +263,14 @@ MonoBehaviour:
   m_microphoneDevices: []
   m_isRecording: 0
   m_audioClipId: 0
-  m_microphoneSensitivity: 50
-  m_threshold: 0.1
-  m_photonAudioClipId: 0
+  m_microphoneSensitivity: 20
+  m_threshold: 0.08
   m_photonAudioClip: {fileID: 0}
-  m_LipSyncAudioClipId: 0
+  m_photonMicName: 
+  m_photonMicPosition: 0
   m_LipSyncAudioClip: {fileID: 0}
   m_LipSyncMicName: 
+  m_lipSyncMicPosition: 0
 --- !u!4 &442606288
 Transform:
   m_ObjectHideFlags: 0
@@ -479,14 +480,14 @@ MonoBehaviour:
   unityMicrophoneDevice: 
   photonMicrophoneDeviceId: 0
   interestGroup: 0
-  debugEchoMode: 1
+  debugEchoMode: 0
   reliableMode: 0
   encrypt: 0
   transmitEnabled: 1
   samplingRate: 24000
   frameDuration: 20000
   bitrate: 30000
-  sourceType: 0
+  sourceType: 2
   microphoneType: 0
   audioClip: {fileID: 0}
   loopAudioClip: 1
@@ -689,6 +690,49 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_mainCamera: {fileID: 2090772406}
+--- !u!1 &1012985248
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1012985250}
+  - component: {fileID: 1012985249}
+  m_Layer: 0
+  m_Name: GGMicWrapperInitializer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1012985249
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1012985248}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cac372b318e453b4197ab703845a3431, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &1012985250
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1012985248}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 8.452305, y: -7.1897755, z: 8.563259}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 13
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1024290846
 PrefabInstance:
   m_ObjectHideFlags: 0
