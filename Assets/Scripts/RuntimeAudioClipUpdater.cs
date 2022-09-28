@@ -23,20 +23,21 @@ public class RuntimeAudioClipUpdater : MonoBehaviour
                 int currentClipId = clip.GetInstanceID();
                 if (currentClipId != referenceClipId)
                 {
-                    Debug.Log("OLILOG Setting clip to reference");
-                    audioSource.Stop();
+                    Debug.Log("OLILOG Setting clip to reference because it changed");
+                    //audioSource.Stop();
                     audioSource.clip = referenceClip;
                     audioSource.Play();
                 }
             }
             else
             {
-                Debug.Log("OLILOG Setting clip to reference");
-                audioSource.Stop();
+                Debug.Log("OLILOG Setting clip to reference because there was none");
+                //audioSource.Stop();
                 audioSource.clip = referenceClip;
                 audioSource.Play();
             }
         }
 
+        audioSource.timeSamples = GGMicrophone.Instance.GetPosition();
     }
 }

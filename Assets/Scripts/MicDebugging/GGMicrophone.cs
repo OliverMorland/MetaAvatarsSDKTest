@@ -16,6 +16,7 @@ public class GGMicrophone : MonoBehaviour
     [SerializeField] float m_microphoneSensitivity = 50f;
     [SerializeField] float m_threshold = 0.1f;
     int m_sampleWindow = 64;
+    AudioSource m_lipSyncAudioSource;
 
     static private GGMicrophone m_instance;
     static public GGMicrophone Instance
@@ -42,7 +43,7 @@ public class GGMicrophone : MonoBehaviour
     public void StartMicrophone()
     {
         string microphoneName = GetMicrophoneDeviceName();
-        m_audioClip = Microphone.Start(microphoneName, true, 10, 48000);
+        m_audioClip = Microphone.Start(microphoneName, true, 1, 48000);
         string clipId = m_audioClip.GetInstanceID().ToString();
         m_audioClip.name = "GGMicAudioClip_" + clipId;
     }
@@ -149,21 +150,20 @@ public class GGMicrophone : MonoBehaviour
     }
 
     [SerializeField] AudioClip m_LipSyncAudioClip;
-    public void SetLipSyncAudioClipName(AudioClip clip)
+    public void SetLipSyncAudioClip(AudioClip clip)
     {
         m_LipSyncAudioClip = clip;
     }
 
     [SerializeField] string m_LipSyncMicName;
-    public void SetLipSyncMicName(string deviceName)
+    public void SetLipSyncAudioSourceDeviceName(string deviceName)
     {
         m_LipSyncMicName = deviceName;
     }
 
-    [Range(0, 1000000)][SerializeField] int m_lipSyncMicPosition;
-    public void SetLipSyncMicPosition(int photonMicPosition)
+    [Range(0, 1000000)][SerializeField] int m_lipSyncAudioSourcePosition;
+    public void SetLipSyncAudioSourcePosition(int photonMicPosition)
     {
-        m_lipSyncMicPosition = photonMicPosition;
+        m_lipSyncAudioSourcePosition = photonMicPosition;
     }
-
 }

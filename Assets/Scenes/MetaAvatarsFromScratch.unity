@@ -270,7 +270,7 @@ MonoBehaviour:
   m_photonMicPosition: 0
   m_LipSyncAudioClip: {fileID: 0}
   m_LipSyncMicName: 
-  m_lipSyncMicPosition: 0
+  m_lipSyncAudioSourcePosition: 0
 --- !u!4 &442606288
 Transform:
   m_ObjectHideFlags: 0
@@ -442,6 +442,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6d6ce42d79cdd434f8598dc6d154e7b4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &509302225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 509302220}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bcfbba8f593083944a72a9abc739b937, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &715665648
 GameObject:
   m_ObjectHideFlags: 0
@@ -478,9 +490,9 @@ MonoBehaviour:
   voiceDetectionThreshold: 0.01
   voiceDetectionDelayMs: 500
   unityMicrophoneDevice: 
-  photonMicrophoneDeviceId: 0
+  photonMicrophoneDeviceId: -1
   interestGroup: 0
-  debugEchoMode: 1
+  debugEchoMode: 0
   reliableMode: 0
   encrypt: 0
   transmitEnabled: 1
@@ -749,6 +761,11 @@ PrefabInstance:
         type: 3}
       propertyPath: _preferOculusMic
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2430523750807860365, guid: c019572605bc29e42b3ed5a058599618,
+        type: 3}
+      propertyPath: Loop
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2430523750807860366, guid: c019572605bc29e42b3ed5a058599618,
         type: 3}
