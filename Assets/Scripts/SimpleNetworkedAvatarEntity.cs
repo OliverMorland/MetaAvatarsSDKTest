@@ -11,6 +11,7 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
 {
     [SerializeField] ulong m_instantiationData;
     PhotonView m_photonView;
+    [SerializeField] float m_maxExpectedLatency = 0.03f;
 
     protected override void Awake()
     {
@@ -23,6 +24,15 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
         m_instantiationData = GetUserIdFromPhotonInstantiationData();
         _userId = m_instantiationData;
         StartCoroutine(TryToLoadUser());
+    }
+
+    private void Update()
+    {
+        if (m_photonView.IsMine == false)
+        {
+            float delay = (1f / PhotonNetwork.SerializationRate) + m_maxExpectedLatency;
+            SetPlaybackTimeDelay(delay);
+        }
     }
 
     void ConfigureAvatarEntity()
@@ -77,4 +87,5 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
             ApplyStreamData(bytes);
         }
     }
+
 }

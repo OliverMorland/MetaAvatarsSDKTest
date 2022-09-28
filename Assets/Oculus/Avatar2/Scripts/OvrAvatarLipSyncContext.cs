@@ -162,7 +162,6 @@ namespace Oculus.Avatar2
 
         public void ProcessAudioSamples(float[] data, int channels)
         {
-            Debug.Log("OLILOG ProcessAudioSamples");
             if (!_active || !OvrAvatarManager.initialized) return;
 
             _visemeContext?.FeedAudio(data, channels);

@@ -37,7 +37,6 @@ public class RuntimeAudioClipUpdater : MonoBehaviour
                 audioSource.Play();
             }
         }
-
         audioSource.timeSamples = GGMicrophone.Instance.GetPosition();
     }
 }
