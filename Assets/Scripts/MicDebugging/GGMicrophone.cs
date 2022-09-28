@@ -42,7 +42,7 @@ public class GGMicrophone : MonoBehaviour
     public void StartMicrophone()
     {
         string microphoneName = GetMicrophoneDeviceName();
-        m_audioClip = Microphone.Start(microphoneName, true, 10, AudioSettings.outputSampleRate);
+        m_audioClip = Microphone.Start(microphoneName, true, 10, 48000);
         string clipId = m_audioClip.GetInstanceID().ToString();
         m_audioClip.name = "GGMicAudioClip_" + clipId;
     }

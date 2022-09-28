@@ -38,7 +38,6 @@ public class GGMicWrapper : IAudioReader<float>
 
     public bool Read(float[] buffer)
     {
-        Debug.Log("OLILOG Reading GGMicWrapper");
         if (Error != null)
         {
             return false;

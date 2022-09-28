@@ -480,7 +480,7 @@ MonoBehaviour:
   unityMicrophoneDevice: 
   photonMicrophoneDeviceId: 0
   interestGroup: 0
-  debugEchoMode: 0
+  debugEchoMode: 1
   reliableMode: 0
   encrypt: 0
   transmitEnabled: 1
@@ -805,7 +805,8 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 2430523750807860364, guid: c019572605bc29e42b3ed5a058599618, type: 3}
   m_SourcePrefab: {fileID: 100100000, guid: c019572605bc29e42b3ed5a058599618, type: 3}
 --- !u!1 &1064939293
 GameObject:

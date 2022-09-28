@@ -17,7 +17,7 @@ public class LipSyncDebugger : MonoBehaviour
     {
         if (OVRInput.GetDown(OVRInput.RawButton.A))
         {
-            GGMicrophone.Instance.StartMicrophone();
+            GGMicrophone.Instance.StopMicrophone();
         }
     }
 
@@ -32,7 +32,7 @@ public class LipSyncDebugger : MonoBehaviour
     {
         if (OVRInput.GetDown(OVRInput.RawButton.B))
         {
-            StartLipSyncMic();
+            GGMicrophone.Instance.StartMicrophone();
         }
     }
 
