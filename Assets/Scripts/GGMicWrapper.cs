@@ -38,6 +38,7 @@ public class GGMicWrapper : IAudioReader<float>
 
     public bool Read(float[] buffer)
     {
+        return false;
         if (Error != null)
         {
             return false;

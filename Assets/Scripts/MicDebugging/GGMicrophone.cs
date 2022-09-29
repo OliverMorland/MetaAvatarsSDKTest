@@ -11,11 +11,10 @@ public class GGMicrophone : MonoBehaviour
     [Range(0, 1000000)] [SerializeField] int m_microphonePosition;
     [SerializeField] string m_currentMicrophoneDevice;
     [SerializeField] string[] m_microphoneDevices;
-    [SerializeField] bool m_isRecording;
     [SerializeField] int m_audioClipId;
     [SerializeField] float m_microphoneSensitivity = 50f;
     [SerializeField] float m_threshold = 0.1f;
-    int m_sampleWindow = 64;
+    int m_sampleWindow = 16;
     AudioSource m_lipSyncAudioSource;
 
     static private GGMicrophone m_instance;
@@ -95,9 +94,7 @@ public class GGMicrophone : MonoBehaviour
             m_audioClipId = m_audioClip.GetInstanceID();
         }
 
-        ShowMicrophoneDevices();
         m_microphonePosition = GetPosition();
-        m_isRecording = IsRecording();
     }
 
     float GetVolumeFromMicrophone()

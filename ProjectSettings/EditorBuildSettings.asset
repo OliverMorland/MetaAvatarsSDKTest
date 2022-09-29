@@ -11,6 +11,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/MetaAvatarsFromScratch.unity
     guid: 027527bab48fdc2418c01829769e4cf4
+  - enabled: 0
+    path: Assets/Scenes/PerformanceTestScene.unity
+    guid: 41d342f85e82914448f1f2381dbaa14b
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 9d5c73d52d22e414e98d1177a648f3a2,
       type: 2}

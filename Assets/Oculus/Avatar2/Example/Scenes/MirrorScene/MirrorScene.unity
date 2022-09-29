@@ -1074,6 +1074,16 @@ PrefabInstance:
   m_Modification:
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 1380493079818413260, guid: d0377a811c2a95841ba015ae0b2c8d45,
+        type: 3}
+      propertyPath: screenPercentToUpdateImportanceCurvePower
+      value: 0.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 1380493079818413260, guid: d0377a811c2a95841ba015ae0b2c8d45,
+        type: 3}
+      propertyPath: screenPercentToUpdateImportanceCurveMultiplier
+      value: 1.5
+      objectReference: {fileID: 0}
     - target: {fileID: 5848076533691757917, guid: d0377a811c2a95841ba015ae0b2c8d45,
         type: 3}
       propertyPath: m_Name

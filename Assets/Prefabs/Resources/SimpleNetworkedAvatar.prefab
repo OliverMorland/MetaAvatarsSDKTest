@@ -97,8 +97,7 @@ MonoBehaviour:
   useRenderLods: 1
   _isLocal: 1
   m_instantiationData: 0
-  m_playBackDelay: 0
-  m_serializationLatency: 0
+  m_maxExpectedLatency: 0.04
 --- !u!114 &6514703084671911782
 MonoBehaviour:
   m_ObjectHideFlags: 0

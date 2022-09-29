@@ -28,11 +28,11 @@ public class SimpleNetworkedAvatarEntity : OvrAvatarEntity, IPunObservable
 
     private void Update()
     {
-        if (m_photonView.IsMine == false)
-        {
-            float delay = (1f / PhotonNetwork.SerializationRate) + m_maxExpectedLatency;
-            SetPlaybackTimeDelay(delay);
-        }
+        //if (m_photonView.IsMine == false)
+        //{
+        //    float delay = (1f / PhotonNetwork.SerializationRate) + m_maxExpectedLatency;
+        //    SetPlaybackTimeDelay(delay);
+        //}
     }
 
     void ConfigureAvatarEntity()
