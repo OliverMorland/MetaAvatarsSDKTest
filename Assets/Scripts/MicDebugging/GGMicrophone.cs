@@ -14,7 +14,7 @@ public class GGMicrophone : MonoBehaviour
     [SerializeField] int m_audioClipId;
     [SerializeField] float m_microphoneSensitivity = 50f;
     [SerializeField] float m_threshold = 0.1f;
-    int m_sampleWindow = 16;
+    int m_sampleWindow = 64;
     AudioSource m_lipSyncAudioSource;
 
     static private GGMicrophone m_instance;

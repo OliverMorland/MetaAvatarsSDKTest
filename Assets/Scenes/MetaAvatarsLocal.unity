@@ -277,9 +277,9 @@ MonoBehaviour:
   _hidden: 0
   useRenderLods: 1
   _isLocal: 0
-  _loadUserFromCdn: 1
+  _loadUserFromCdn: 0
   _assets:
-  - source: 0
+  - source: 1
     path: 0
   _assetPostfixDefault: _rift.glb
   _assetPostfixAndroid: _quest.glb
@@ -578,7 +578,7 @@ MonoBehaviour:
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _loadUserFromCdn: 1
+  _loadUserFromCdn: 0
   _assets:
   - source: 0
     path: 0
