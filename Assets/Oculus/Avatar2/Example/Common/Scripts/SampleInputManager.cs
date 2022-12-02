@@ -1,3 +1,7 @@
+#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS && !OVRPLUGIN_UNSUPPORTED_PLATFORM
+#define USING_XR_SDK
+#endif
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,17 +23,22 @@ public class SampleInputManager : OvrAvatarInputManager
 
     [SerializeField]
     [Tooltip("Optional. If added, it will use input directly from OVRCameraRig instead of doing its own calculations.")]
+#if USING_XR_SDK
     private OVRCameraRig _ovrCameraRig = null;
+#endif
     private bool _useOvrCameraRig;
 
     // Only used in editor, produces warnings when packaging
 #pragma warning disable CS0414 // is assigned but its value is never used
-    [SerializeField] private bool _debugDrawTrackingLocations = false;
+    [SerializeField]
+    private bool _debugDrawTrackingLocations = false;
 #pragma warning restore CS0414 // is assigned but its value is never used
 
     protected void Awake()
     {
+#if USING_XR_SDK
         _useOvrCameraRig = _ovrCameraRig != null;
+#endif
 
         // Debug Drawing
 #if UNITY_EDITOR
@@ -43,9 +52,11 @@ public class SampleInputManager : OvrAvatarInputManager
 
     private void Start()
     {
+#if USING_XR_SDK
         // If OVRCameraRig doesn't exist, we should set tracking origin ourselves
         if (!_useOvrCameraRig)
         {
+
             if (OVRManager.instance == null)
             {
                 OvrAvatarLog.LogDebug("Creating OVRManager, as one doesn't exist yet.", logScope, this);
@@ -73,6 +84,7 @@ public class SampleInputManager : OvrAvatarInputManager
             BodyTracking.InputTrackingDelegate = new SampleInputTrackingDelegate(_ovrCameraRig);
             BodyTracking.InputControlDelegate = new SampleInputControlDelegate();
         }
+#endif
     }
 
     protected override void OnDestroyCalled()

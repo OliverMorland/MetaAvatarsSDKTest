@@ -24,14 +24,14 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6176357634634757532}
-  m_LocalRotation: {x: 0.13738227, y: 0.8472276, z: -0.385871, w: 0.33828264}
+  m_LocalRotation: {x: -0.19049424, y: 0.82307863, z: -0.36260486, w: -0.39340985}
   m_LocalPosition: {x: 0, y: 3, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
   - {fileID: 6176357635736794076}
   m_Father: {fileID: 5650585432433268674}
   m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 48.313, y: 135.375, z: -2.437}
+  m_LocalEulerAnglesHint: {x: 48.313, y: 230, z: -2.437}
 --- !u!108 &6176357634634757535
 Light:
   m_ObjectHideFlags: 0
@@ -275,16 +275,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   CurrentExposure: 1
   ExposureShaderParameterName: u_Exposure
-  DiffuseEnvironmentCubeMap: {fileID: 8900000, guid: 0c8599d419bbd69488aeb197bfcb563c,
+  DiffuseEnvironmentCubeMap: {fileID: 8900000, guid: 715c42988fc43054eb71fad1cb7de8b0,
     type: 3}
-  DiffuseEnvironmentShaderParameterName: u_DiffuseEnvSampler
-  SpecularEnvironmentCubeMap: {fileID: 8900000, guid: 502dcafaea78ee04aaf4ef099813910e,
+  DiffuseEnvironmentShaderParameterNames:
+  - u_DiffuseEnvSampler
+  - u_LambertianEnvSampler
+  SpecularEnvironmentCubeMap: {fileID: 8900000, guid: 821fba2a72c9b224c8068daca9ce6042,
     type: 3}
-  SpecularEnvironmentCubeMapSingleMip: {fileID: 8900000, guid: 502dcafaea78ee04aaf4ef099813910e,
-    type: 3}
-  SpecularEnvironmentShaderParameterName: u_SpecularEnvSampler
+  SpecularEnvironmentShaderParameterNames:
+  - u_SpecularEnvSampler
+  - u_GGXEnvSampler
   SpecularMapMipCountShaderPameterName: u_MipCount
   BrdfLutMap: {fileID: 2800000, guid: 918eb5f61eea9f6479953048b19170c0, type: 3}
-  BrdfLutShaderParameterName: u_brdfLUT
+  BrdfLutShaderParameterNames:
+  - u_brdfLUT
+  - u_GGXLUT
   CubeMapMaterial: {fileID: 2100000, guid: 6bcb796a0c641d84198d6e6278a972d9, type: 2}
   CubeMapShaderParameterName: _Tex

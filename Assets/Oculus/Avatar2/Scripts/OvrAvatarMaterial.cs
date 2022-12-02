@@ -11,9 +11,9 @@ namespace Oculus.Avatar2
     /**
      * @class OvrAvatarMaterial
      * Collects shader and material properties to apply to an avatar.
-     * 
+     *
      * OvrAvatarMaterial is like the Unity MaterialPropertyBlock.
-     * It has getters and setters for the various types of material properties. 
+     * It has getters and setters for the various types of material properties.
      * Unlike MaterialPropertyBlock, this class remembers and can serialize
      * the names and values of the properties that have been changed.
      *
@@ -30,7 +30,7 @@ namespace Oculus.Avatar2
      *  avatar1.Material.SetKeyword("_EMISSION", true);
      *  avatar1.ApplyMaterial();
      * @endcode
-     * 
+     *
      * This material state is also applied to new renderables that
      * are added to the avatar entity.
      *
@@ -47,7 +47,7 @@ namespace Oculus.Avatar2
      *  avatar2.Material.SetColor(propID, Color.blue);
      *  avatar2.ApplyMaterial();
      * @endcode
-     * 
+     *
      *  Avatars can share materials as well. If a material is provided
      *  before the avatar is loaded, the material will be applied to all the
      *  future renderables as well.
@@ -63,18 +63,17 @@ namespace Oculus.Avatar2
      *  avatar1.ApplyMaterial();
      *  avatar2.ApplyMaterial();
      * @endcode
-     * 
+     *
      * As an optimization, you can set and get material properties
      * based on their integer ID instead of a string name. This ID
      * is obtained by calling Shader.PropertyToId() with the  material property name.
      * If you first set the property using the name, OvrAvatarMaterial will
      * be able to retrieve it by name or by ID. If you first set the property
      * using the ID, you will not be able to retrieve it by name.
-     * 
+     *
      * @see OvrAvatarEntity.Material
      */
-
-    public class OvrAvatarMaterial
+    public sealed class OvrAvatarMaterial
     {
         /*
          * type tokens for material properties
@@ -91,23 +90,33 @@ namespace Oculus.Avatar2
             VEC_ARRAY = 7,
             TEXTURE = 8
         };
+
+        private static Dictionary<string, int> g_shaderIdLookup = default;
+
+        private readonly Dictionary<int, ValueTuple<object, PropertyType>> properties_
+            = new Dictionary<int, ValueTuple<object, PropertyType>>();
+
+        private readonly Dictionary<string, bool> ShaderKeywords = new Dictionary<string, bool>();
+
         private MaterialPropertyBlock propertyBlock_;
-        private Dictionary<int, Tuple<PropertyType, object>> properties_;
-        public List<KeyValuePair<string, bool>> ShaderKeywords = null;
-        public Shader Shader = null;
+        private Shader Shader = null;
 
         public OvrAvatarMaterial()
         {
-            properties_ = new Dictionary<int, Tuple<PropertyType, object>>();
-            ShaderKeywords = new List<KeyValuePair<string, bool>>();
             propertyBlock_ = new MaterialPropertyBlock();
+
+            // Check for static initialization in instance ctor to avoid implicit static ctor
+            if (g_shaderIdLookup == null)
+            {
+                g_shaderIdLookup = new Dictionary<string, int>();
+            }
         }
 
 
         /**
          * Clears the contents of this instance, removing shader,
          * shader keywords and material properties.
-         * 
+         *
          * This does not change the appearance of avatars
          * using this instance until OvrAvatarEntity.ApplyMaterial
          * is explicitly called on each avatar using it.
@@ -115,13 +124,16 @@ namespace Oculus.Avatar2
          * @see OvrAvatarEntity.ApplyMaterial()
          * @see OvrAvatarEntity.Material
          */
-        public virtual void Clear()
+        public void Clear()
         {
             properties_.Clear();
+            ShaderKeywords.Clear();
+
             propertyBlock_ = null;
             Shader = null;
-            ShaderKeywords.Clear();
         }
+
+        public void SetShader(Shader shader) => Shader = shader;
 
 
         /**
@@ -133,16 +145,9 @@ namespace Oculus.Avatar2
          * @see SetKeyword(string, boolean)
          * @see RemoveKeyword(string)
          */
-        bool GetKeyword(string keyword)
+        public bool GetKeyword(string keyword)
         {
-            foreach (var entry in ShaderKeywords)
-            {
-                if (entry.Key == keyword)
-                {
-                    return entry.Value;
-                }
-            }
-            return false;
+            return ShaderKeywords.TryGetValue(keyword, out bool val) && val;
         }
 
         /**
@@ -154,16 +159,9 @@ namespace Oculus.Avatar2
          * @see SetKeyword(string, boolean)
          * @see RemoveKeyword(string)
          */
-        bool HasKeyword(string keyword)
+        public bool HasKeyword(string keyword)
         {
-            foreach (var entry in ShaderKeywords)
-            {
-                if (entry.Key == keyword)
-                {
-                    return true;
-                }
-            }
-            return false;
+            return ShaderKeywords.ContainsKey(keyword);
         }
 
         /**
@@ -175,7 +173,7 @@ namespace Oculus.Avatar2
          * this material unless you call OvrAvatarEntity.ApplyMaterial()
          * for all avatars that share this instance. It will affect
          * future renderables added to these avatars.
-         * 
+         *
          * After this call, HasKeyword() will return true.
          *
          * @see GetKeyword(string)
@@ -184,14 +182,13 @@ namespace Oculus.Avatar2
          */
         public void SetKeyword(string keyword, bool enable)
         {
-            RemoveKeyword(keyword);
-            ShaderKeywords.Add(new KeyValuePair<string, bool>(keyword, enable));
+            ShaderKeywords[keyword] = enable;
         }
 
         /**
          * Removes a shader keyword from this material.
          * @param keyword name of shader keyword to remove.
-         * 
+         *
          * After this call, HasKeyword() will return false.
          * @see GetKeyword(string)
          * @see HasKeyword(string)
@@ -199,16 +196,7 @@ namespace Oculus.Avatar2
          */
         public void RemoveKeyword(string keyword)
         {
-            int i = 0;
-            foreach (var entry in ShaderKeywords)
-            {
-                if (entry.Key == keyword)
-                {
-                    ShaderKeywords.RemoveAt(i);
-                    return;
-                }
-                ++i;
-            }
+            ShaderKeywords.Remove(keyword);
         }
 
         /**
@@ -222,7 +210,7 @@ namespace Oculus.Avatar2
          */
         public Color GetColor(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetColor(nameID);
         }
 
@@ -236,7 +224,7 @@ namespace Oculus.Avatar2
          */
         public Color GetColor(int nameID)
         {
-            return (Color)properties_[nameID].Item2;
+            return (Color)properties_[nameID].Item1;
         }
 
         /**
@@ -249,7 +237,7 @@ namespace Oculus.Avatar2
          */
         public float GetFloat(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetFloat(nameID);
         }
 
@@ -263,7 +251,7 @@ namespace Oculus.Avatar2
          */
         public float GetFloat(int nameID)
         {
-            return (float)properties_[nameID].Item2;
+            return (float)properties_[nameID].Item1;
         }
 
         /**
@@ -276,7 +264,7 @@ namespace Oculus.Avatar2
          */
         public float[] GetFloatArray(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetFloatArray(nameID);
         }
 
@@ -290,7 +278,7 @@ namespace Oculus.Avatar2
          */
         public float[] GetFloatArray(int nameID)
         {
-            return (float[])properties_[nameID].Item2;
+            return (float[])properties_[nameID].Item1;
         }
 
         /**
@@ -303,7 +291,7 @@ namespace Oculus.Avatar2
          */
         public int GetInt(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetInt(nameID);
         }
 
@@ -317,7 +305,7 @@ namespace Oculus.Avatar2
          */
         public int GetInt(int nameID)
         {
-            return (int)properties_[nameID].Item2;
+            return (int)properties_[nameID].Item1;
         }
 
         /**
@@ -330,7 +318,7 @@ namespace Oculus.Avatar2
          */
         public Matrix4x4 GetMatrix(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetMatrix(nameID);
         }
 
@@ -344,7 +332,7 @@ namespace Oculus.Avatar2
          */
         public Matrix4x4 GetMatrix(int nameID)
         {
-            return (Matrix4x4)properties_[nameID].Item2;
+            return (Matrix4x4)properties_[nameID].Item1;
         }
 
         /**
@@ -357,7 +345,7 @@ namespace Oculus.Avatar2
          */
         public Texture GetTexture(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetTexture(nameID);
         }
 
@@ -371,7 +359,7 @@ namespace Oculus.Avatar2
          */
         public Texture GetTexture(int nameID)
         {
-            return (Texture)properties_[nameID].Item2;
+            return (Texture)properties_[nameID].Item1;
         }
 
         /**
@@ -384,7 +372,7 @@ namespace Oculus.Avatar2
          */
         public Vector4 GetVector(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetVector(nameID);
         }
 
@@ -398,7 +386,7 @@ namespace Oculus.Avatar2
          */
         public Vector4 GetVector(int nameID)
         {
-            return (Vector4)properties_[nameID].Item2;
+            return (Vector4)properties_[nameID].Item1;
         }
 
         /**
@@ -411,7 +399,7 @@ namespace Oculus.Avatar2
          */
         public Vector4[] GetVectorArray(string name)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             return GetVectorArray(nameID);
         }
 
@@ -425,22 +413,25 @@ namespace Oculus.Avatar2
          */
         public Vector4[] GetVectorArray(int nameID)
         {
-            return properties_[nameID].Item2 as Vector4[];
+            return properties_[nameID].Item1 as Vector4[];
         }
 
         /**
          * Sets the value of a Color material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no color property with that name.
          * @see GetColor(string)
          * @see SetColor(int, Color)
          */
-        public void SetColor(string name, Color value)
+        public int SetColor(string name, Color value)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetColor(nameID, value);
+            return nameID;
         }
+
         /**
          * Sets the value of a Color material property with the given ID.
          * @param nameID  an ID returned by Shader.PropertyToId()
@@ -449,23 +440,23 @@ namespace Oculus.Avatar2
          * @see GetColor(int)
          * @see SetColor(string, Color)
          */
-        public void SetColor(int nameID, Color value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.COLOR, value);
-        }
+        public void SetColor(int nameID, Color colorValue)
+            => SetProperty(nameID, in colorValue, PropertyType.COLOR);
 
         /**
          * Sets the value of a float material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no float property with that name.
          * @see GetFloat(string)
          * @see SetFloat(int, float)
          */
-        public void SetFloat(string name, float value)
+        public int SetFloat(string name, float value)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetFloat(nameID, value);
+            return nameID;
         }
 
         /**
@@ -477,23 +468,23 @@ namespace Oculus.Avatar2
          * @see GetFloat(int)
          * @see SetFloat(string, float)
          */
-        public void SetFloat(int nameID, float value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.FLOAT, value);
-        }
+        public void SetFloat(int nameID, float floatValue)
+            => SetProperty(nameID, floatValue, PropertyType.FLOAT);
 
         /**
          * Sets the value of a float array material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no float array property with that name.
          * @see GetFloatArray(string)
          * @see SetFloatArray(int, float[])
          */
-        public void SetFloatArray(string name, float[] values)
+        public int SetFloatArray(string name, float[] values)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetFloatArray(nameID, values);
+            return nameID;
         }
 
         /**
@@ -504,23 +495,23 @@ namespace Oculus.Avatar2
          * @see GetFloatArray(int)
          * @see SetFloatArray(string, float[])
          */
-        public void SetFloatArray(int nameID, float[] values)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.FLOAT_ARRAY, values);
-        }
+        public void SetFloatArray(int nameID, float[] floatArrayValues)
+            => SetProperty(nameID, in floatArrayValues, PropertyType.FLOAT_ARRAY);
 
         /**
          * Sets the value of an integer material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no integer property with that name.
          * @see GetInt(string)
          * @see SetInt(int, int)
          */
-        public void SetInt(string name, int value)
+        public int SetInt(string name, int value)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetInt(nameID, value);
+            return nameID;
         }
 
         /**
@@ -531,23 +522,23 @@ namespace Oculus.Avatar2
          * @see GetInt(int)
          * @see SetInt(string, int)
          */
-        public void SetInt(int nameID, int value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.INTEGER, value);
-        }
+        public void SetInt(int nameID, int intValue)
+            => SetProperty(nameID, in intValue, PropertyType.INTEGER);
 
         /**
          * Sets the value of a Matrix4x4 material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no matrix property with that name.
          * @see GetMatrix(string)
          * @see SetMatrix(int, Matrix4x4)
          */
-        public void SetMatrix(string name, Matrix4x4 value)
+        public int SetMatrix(string name, Matrix4x4 value)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetMatrix(nameID, value);
+            return nameID;
         }
 
         /**
@@ -558,35 +549,23 @@ namespace Oculus.Avatar2
          * @see GetMatrix(int)
          * @see SetMatrix(string, Matrix4x4)
          */
-        public void SetMatrix(int nameID, Matrix4x4 value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.MATRIX, value); ;
-        }
-
-        public void SetTexture(string name, RenderTexture value)
-        {
-            int nameID = Shader.PropertyToID(name);
-            SetTexture(nameID, value);
-        }
-
-
-        public void SetTexture(int nameID, RenderTexture value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.TEXTURE, value);
-        }
+        public void SetMatrix(int nameID, Matrix4x4 matValue)
+            => SetProperty(nameID, in matValue, PropertyType.MATRIX);
 
         /**
          * Sets the value of a Texture material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no Texture property with that name.
          * @see GetTexture(string)
          * @see SetTexture(int, Texture)
          */
-        public void SetTexture(string name, Texture value)
+        public int SetTexture(string name, Texture value)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetTexture(nameID, value);
+            return nameID;
         }
 
         /**
@@ -597,23 +576,23 @@ namespace Oculus.Avatar2
          * @see GetTexture(int)
          * @see SetTexture(string, Texture)
          */
-        public void SetTexture(int nameID, Texture value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.TEXTURE, value);
-        }
+        public void SetTexture(int nameID, Texture textureValue)
+            => SetProperty(nameID, in textureValue, PropertyType.TEXTURE);
 
         /**
          * Sets the value of a Vector4 material property with the given name.
          * @param name    name of the material property to set.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no vector property with that name.
          * @see GetVector(string)
          * @see SetVector(int, Vector4)
          */
-        public void SetVector(string name, Vector4 value)
+        public int SetVector(string name, Vector4 value)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetVector(nameID, value);
+            return nameID;
         }
 
         /**
@@ -624,43 +603,39 @@ namespace Oculus.Avatar2
          * @see GetVector(int)
          * @see SetVector(string, Vector4)
          */
-        public void SetVector(int nameID, Vector4 value)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.VEC4, value);
-        }
+        public void SetVector(int nameID, Vector4 vec4Value)
+            => SetProperty(nameID, in vec4Value, PropertyType.VEC4);
 
         /**
          * Sets the value of a vector array material property with the given name.
          * @param name    name of the material property to set.
-         * @returns Vector4[] new value of property.
+         * @returns ShaderID of name
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no vector array property with that name.
          * @see GetVectorArray(string)
          * @see SetVectorArray(int, Vector4[])
          */
-        public void SetVectorArray(string name, Vector4[] values)
+        public int SetVectorArray(string name, Vector4[] values)
         {
-            int nameID = Shader.PropertyToID(name);
+            int nameID = GetShaderIDForProperty(name);
             SetVectorArray(nameID, values);
+            return nameID;
         }
 
         /**
          * Sets the value of a vector array material property with the given ID.
          * @param nameID  an ID returned by Shader.PropertyToId()
-         * @returns Vector4[] new value of property.
          * @throws ArgumentNullException if the name is null.
          * @throws KeyNotFoundException if there is no vector array property with that name.
          * @see GetVectorArray(int)
          * @see SetVectorArray(string, Color)
          */
-        public void SetVectorArray(int nameID, Vector4[] values)
-        {
-            properties_[nameID] = new Tuple<PropertyType, object>(PropertyType.VEC_ARRAY, values); ;
-        }
+        public void SetVectorArray(int nameID, Vector4[] vec4Values)
+            => SetProperty(nameID, in vec4Values, PropertyType.VEC_ARRAY);
 
         /**
          * Applies the current material state (shader, keywords, properties)
-         * to a specific renderable. 
+         * to a specific renderable.
          * @param renderable OvrAvatarRenderable to apply this material to.
          * Updates the Unity MaterialPropertyBlock associated with the renderable.
          */
@@ -672,15 +647,17 @@ namespace Oculus.Avatar2
             {
                 renderable.SetShader(Shader);
             }
-            foreach (KeyValuePair<string, Boolean> entry in ShaderKeywords)
+
+            foreach (var entry in ShaderKeywords)
             {
                 renderable.SetMaterialKeyword((string)entry.Key, (Boolean)entry.Value);
             }
-            foreach (KeyValuePair<int, Tuple<PropertyType, object>> pair in properties_)
-            {
-                object val = pair.Value.Item2;
 
-                switch (pair.Value.Item1)
+            foreach (var pair in properties_)
+            {
+                object val = pair.Value.Item1;
+
+                switch (pair.Value.Item2)
                 {
                     case PropertyType.INTEGER:
                         propertyBlock_.SetInt(pair.Key, (int)val);
@@ -707,31 +684,37 @@ namespace Oculus.Avatar2
                         break;
 
                     case PropertyType.FLOAT_ARRAY:
-                        if (val is float[])
-                        {
-                            propertyBlock_.SetFloatArray(pair.Key, val as float[]);
-                        }
-                        else
-                        {
-                            propertyBlock_.SetFloatArray(pair.Key, val as List<float>);
-                        }
+                        propertyBlock_.SetFloatArray(pair.Key, (float[])val);
                         break;
 
                     case PropertyType.VEC_ARRAY:
-                        var vecVal = val as Vector4[];
-                        if (!(vecVal is null))
-                        {
-                            propertyBlock_.SetVectorArray(pair.Key, vecVal);
-                        }
-                        else
-                        {
-                            propertyBlock_.SetVectorArray(pair.Key, val as List<Vector4>);
-                        }
+                        propertyBlock_.SetVectorArray(pair.Key, (Vector4[])val);
+                        break;
+
+                    case PropertyType.NONE:
                         break;
                 }
             }
+
             rend.SetPropertyBlock(propertyBlock_);
         }
-    };
 
+        private void SetProperty<T>(int nameID, in T val, PropertyType type)
+        {
+            // ReSharper disable once HeapView.PossibleBoxingAllocation
+            properties_[nameID] = new ValueTuple<object, PropertyType>(val, type);
+        }
+
+        private static int GetShaderIDForProperty(string propertyName)
+        {
+            System.Diagnostics.Debug.Assert(g_shaderIdLookup != null);
+            if (!g_shaderIdLookup.TryGetValue(propertyName, out var shaderId))
+            {
+                shaderId = Shader.PropertyToID(propertyName);
+                g_shaderIdLookup.Add(propertyName, shaderId);
+            }
+
+            return shaderId;
+        }
+    }
 }

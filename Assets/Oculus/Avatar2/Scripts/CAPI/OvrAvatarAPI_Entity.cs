@@ -17,11 +17,6 @@ namespace Oculus.Avatar2
         internal static ovrAvatar2EntityLoadNetworkSettings SpecificationNetworkSettings = ovrAvatar2_DefaultEntityNetworkSettings();
         internal static ovrAvatar2EntityLoadNetworkSettings AssetNetworkSettings = ovrAvatar2_DefaultEntityNetworkSettings();
 
-        private const UInt32 CONNECTION_TIMEOUT_MS = 5000U;
-        internal static UInt32 CurrentMaxAssetTimeoutMs
-            => Math.Max(AssetNetworkSettings.timeoutMS, AssetNetworkSettings.lowSpeedTimeSeconds * 1000U)
-            + CONNECTION_TIMEOUT_MS; //curl timeout doesn't start until after connection
-
         //-----------------------------------------------------------------
         //
         // Creation / Destruction
@@ -35,8 +30,10 @@ namespace Oculus.Avatar2
         ///
         public enum ovrAvatar2EntityFeatures : Int32
         {
+            // Empty features flag, usually used for error signaling
             /* None value isn't needed in C# and conflicts w/ some Unity inspector logic for Flags */
             // None = 0,
+
             /// Render avatar geometry
             Rendering_Prims = 1 << 1,
 
@@ -64,16 +61,32 @@ namespace Oculus.Avatar2
             /// Display controllers in avatar hands (not implemented yet)
             ShowControllers = 1 << 9,
 
-            Rendering = Rendering_Prims | Rendering_SkinningMatrices | Rendering_ObjectSpaceTransforms,
-            Preset_All = Rendering | UseDefaultModel | Animation | UseDefaultAnimHierarchy | UseDefaultFaceAnimations,
+            /// Reproportions avatar hand bones according to tracking information in hand tracking mode
+            HandScaling = 1 << 10,
 
-            // Presets below are not included in the native sdk, but can be added here for convenience of common feature sets
-            Preset_Default = Rendering_Prims | Rendering_SkinningMatrices | Animation | UseDefaultModel |
-                             UseDefaultAnimHierarchy | UseDefaultFaceAnimations,
-            Preset_AllIk = Rendering_Prims | Rendering_SkinningMatrices | UseDefaultModel | Animation | UseDefaultAnimHierarchy | AnalyticIk |
-                           UseDefaultFaceAnimations,
-            Preset_Minimal = Rendering_Prims | Rendering_SkinningMatrices | Animation,
-            Preset_Remote = Rendering_Prims | Rendering_SkinningMatrices
+            /// Allows to control the leg end-effector transforms using a two-bone IK solver.
+            LegIk = 1 << 11,
+
+            // Base set of features needed for entity rendering
+            Rendering = Rendering_Prims | Rendering_SkinningMatrices,
+
+            // Collection of all currently active feature flags
+            Preset_All = Rendering_Prims | Rendering_SkinningMatrices | Rendering_ObjectSpaceTransforms | Animation
+                         | UseDefaultModel | UseDefaultAnimHierarchy | AnalyticIk | UseDefaultFaceAnimations
+                         | ShowControllers | HandScaling | LegIk,
+
+            // Preset collection of feature flags for standard local avatar use case
+            Preset_Default = Rendering | Animation | UseDefaultModel | UseDefaultAnimHierarchy
+                             | UseDefaultFaceAnimations | HandScaling,
+
+            // Preset collection for using AnalyticIk/SimpleIk
+            Preset_AllIk = Preset_Default | AnalyticIk,
+
+            // Preset for minimum functional local avatar
+            Preset_Minimal = Rendering | Animation,
+
+            // Preset for common remote avatar usage
+            Preset_Remote = Rendering | UseDefaultModel
         }
 
         ///
@@ -94,6 +107,8 @@ namespace Oculus.Avatar2
             public ovrAvatar2EntityManifestationFlags manifestationFlags; // unsigned ovrAvatar2EntityManifestationFlags
             [EnumMask]
             public ovrAvatar2EntityViewFlags viewFlags; // unsigned ovrAvatar2EntityViewFlags
+            [EnumMask]
+            public ovrAvatar2EntitySubMeshInclusionFlags subMeshInclusionFlags; // unsigned ovrAvatar2EntityViewFlags
         }
 
 
@@ -121,17 +136,20 @@ namespace Oculus.Avatar2
                 get => renderFilters.lodFlags;
                 set => renderFilters.lodFlags = value;
             }
+
+            // TODO: Check for sensible input settings
+            public bool IsValid => true;
         }
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern ovrAvatar2Result ovrAvatar2Entity_Create(in ovrAvatar2EntityCreateInfo info, out ovrAvatar2EntityId entityId);
+        private static extern ovrAvatar2Result ovrAvatar2Entity_Create(in ovrAvatar2EntityCreateInfo info, out ovrAvatar2EntityId entityId);
 
         /// Destroy an entity, releasing all related memory
         /// \param entity to destroy
         /// \return result code
         ///
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        private static extern CAPI.ovrAvatar2Result ovrAvatar2Entity_Destroy(ovrAvatar2EntityId entityId);
+        private static extern ovrAvatar2Result ovrAvatar2Entity_Destroy(ovrAvatar2EntityId entityId);
 
 
         //-----------------------------------------------------------------
@@ -205,6 +223,20 @@ namespace Oculus.Avatar2
 
         //-----------------------------------------------------------------
         //
+        // SubMeshInclusions
+        //
+        //
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Entity_GetSubMeshInclusionFlags(
+            ovrAvatar2EntityId entityId, out ovrAvatar2EntitySubMeshInclusionFlags subMeshInclusionFlags);
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Entity_SetSubMeshInclusionFlags(
+            ovrAvatar2EntityId entityId, ovrAvatar2EntitySubMeshInclusionFlags subMeshInclusionFlags);
+
+        //-----------------------------------------------------------------
+        //
         // Pose
         //
         //
@@ -240,9 +272,9 @@ namespace Oculus.Avatar2
 
         internal struct ovrAvatar2EntityLoadNetworkSettings
         {
-            public UInt32 timeoutMS; // See CURLOPT_TIMEOUT_MS
-            public UInt32 lowSpeedTimeSeconds; // See CURLOPT_LOW_SPEED_TIME
-            public UInt32 lowSpeedLimitBytesPerSecond; // See CURLOPT_LOW_SPEED_LIMIT
+            public UInt32 timeoutMS; // If a request is not completed in this time, retry
+            public UInt32 lowSpeedTimeSeconds; // If download speed is below lowSpeedLimitBytesPerSecond for this long, retry
+            public UInt32 lowSpeedLimitBytesPerSecond; // see lowSpeedTimeSeconds
         }
 
         /// Setup ovrAvatar2EntityLoadNetworkSettings info with default values.
@@ -267,7 +299,8 @@ namespace Oculus.Avatar2
             public ovrAvatar2EntityFilters loadFilters;
             public ovrAvatar2EntityLoadNetworkSettings loadSpecificationNetworkSettings;
             public ovrAvatar2EntityLoadNetworkSettings loadAssetNetworkSettings;
-            public UInt32 maxTextureMemoryBytes; // 0 for no limit, minimum 80*1024 if > 0
+            // 0 for no textures, minimum 80*1024 if > 0, UINT_MAX for no limit
+            public UInt32 maxTextureMemoryBytes;
             public UInt32 numLodsWithMorphs;
         }
 
@@ -275,6 +308,9 @@ namespace Oculus.Avatar2
         ///
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         private static extern ovrAvatar2EntityLoadSettings ovrAvatar2Entity_DefaultLoadSettings();
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrAvatar2EntityLoadSettings ovrAvatar2Entity_MinimumLoadSettings();
 
         internal static ovrAvatar2EntityFilters OvrAvatar2_DefaultLoadFilters()
         {
@@ -288,12 +324,21 @@ namespace Oculus.Avatar2
                 lodFlags = ovrAvatar2EntityLODFlags.All,
                 manifestationFlags = ovrAvatar2EntityManifestationFlags.All,
                 viewFlags = ovrAvatar2EntityViewFlags.All,
+                subMeshInclusionFlags = ovrAvatar2EntitySubMeshInclusionFlags.All
             };
         }
 
         internal static ovrAvatar2EntityLoadSettings OvrAvatar2_GetLoadSettings()
         {
             var loadSettings = ovrAvatar2Entity_DefaultLoadSettings();
+            loadSettings.loadSpecificationNetworkSettings = SpecificationNetworkSettings;
+            loadSettings.loadAssetNetworkSettings = AssetNetworkSettings;
+            return loadSettings;
+        }
+
+        internal static ovrAvatar2EntityLoadSettings OvrAvatar2_GetFastLoadSettings()
+        {
+            var loadSettings = ovrAvatar2Entity_MinimumLoadSettings();
             loadSettings.loadSpecificationNetworkSettings = SpecificationNetworkSettings;
             loadSettings.loadAssetNetworkSettings = AssetNetworkSettings;
             return loadSettings;
@@ -335,6 +380,21 @@ namespace Oculus.Avatar2
         {
             var loadSettings = OvrAvatar2_GetLoadSettings();
             loadSettings.loadFilters = loadFilters;
+            return ovrAvatar2Entity_LoadUri(entityId, uri, loadSettings, out requestId);
+        }
+
+        /// \param the uri to the GLB file
+        ///        From file: "file://<path.glb>"
+        ///        From zip file: "zip://<path.glb>"
+        ///        From content delivery network (cdn): "cdn://<path.glb>"
+        /// \param load filters for this load
+        /// \param (out) loadRequestID to retrieve status from ovrAvatar2Asset_GetLoadRequestInfo
+        public static ovrAvatar2Result OvrAvatarEntity_LoadUriWithFiltersFast(ovrAvatar2EntityId entityId, string uri, in ovrAvatar2EntityFilters loadFilters, out ovrAvatar2LoadRequestId requestId)
+        {
+            var loadSettings = OvrAvatar2_GetFastLoadSettings();
+            loadSettings.loadFilters.manifestationFlags = loadFilters.manifestationFlags;
+            loadSettings.loadFilters.subMeshInclusionFlags = loadFilters.subMeshInclusionFlags;
+            loadSettings.loadFilters.viewFlags = loadFilters.viewFlags;
             return ovrAvatar2Entity_LoadUri(entityId, uri, loadSettings, out requestId);
         }
 
@@ -403,6 +463,14 @@ namespace Oculus.Avatar2
             return ovrAvatar2Entity_LoadUser(entityId, userId, loadSettings, out requestId);
         }
 
+        public static ovrAvatar2Result OvrAvatarEntity_LoadUserWithFiltersFast(ovrAvatar2EntityId entityId, UInt64 userId, in ovrAvatar2EntityFilters loadFilters, out ovrAvatar2LoadRequestId requestId)
+        {
+            var loadSettings = OvrAvatar2_GetFastLoadSettings();
+            loadSettings.loadFilters.manifestationFlags = loadFilters.manifestationFlags;
+            loadSettings.loadFilters.subMeshInclusionFlags = loadFilters.subMeshInclusionFlags;
+            loadSettings.loadFilters.viewFlags = loadFilters.viewFlags;
+            return ovrAvatar2Entity_LoadUser(entityId, userId, loadSettings, out requestId);
+        }
 
         /// Unload the default model from the entity
         /// \param ovrAvatar2Entity to unload the default model from
@@ -418,7 +486,12 @@ namespace Oculus.Avatar2
         /// Unload an asset loaded via ovrAvatar2Entity_LoadUri()
         /// \param ovrAvatar2Entity to unload the asset from
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        private unsafe static extern ovrAvatar2Result ovrAvatar2Entity_UnloadUri(ovrAvatar2EntityId entityId, /*const*/ char* uri);
+        private static extern ovrAvatar2Result ovrAvatar2Entity_UnloadUri(ovrAvatar2EntityId entityId, string uri);
+        public static bool OvrAvatar2Entity_UnloadUri(ovrAvatar2EntityId entityId, string uri)
+        {
+            return ovrAvatar2Entity_UnloadUri(entityId, uri)
+                .EnsureSuccess("ovrAvatar2Entity_UnloadUri");
+        }
 
         /// Unload an asset loaded via ovrAvatar2Entity_LoadMemory()
         /// \param ovrAvatar2Entity to unload the asset from

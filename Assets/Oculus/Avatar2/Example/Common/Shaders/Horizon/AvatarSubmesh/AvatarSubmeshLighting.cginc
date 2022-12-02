@@ -1,13 +1,13 @@
 ﻿#ifndef AVATAR_SUBMESH_LIGHTING_CGINC
 #define AVATAR_SUBMESH_LIGHTING_CGINC
 
-#include "Horizon/MacroRemapper.cginc"
+#include "../Horizon/MacroRemapper.cginc"
 
 // Lighting functions utilized by the submesh technique to make different sub meshes in the material look different
 
-#include "AvatarSubmesh\AvatarSubmeshProperties.cginc"
-#include "AvatarCommon\AvatarCommonLighting.cginc"
-#include "AvatarEye\AvatarEyeGlint.cginc"
+#include "..\AvatarSubmesh\AvatarSubmeshProperties.cginc"
+#include "..\AvatarCommon\AvatarCommonLighting.cginc"
+#include "..\AvatarEye\AvatarEyeGlint.cginc"
 
 #define AVATAR_SUBMESH_DEBUG_LIGHTING_ENABLED defined(_RENDER_DEBUG_DIFFUSE) || defined(_RENDER_DEBUG_SPECULAR) || defined(_RENDER_DEBUG_INDIRECT_DIFFUSE) || defined(_RENDER_DEBUG_INDIRECT_SPECULAR)
 

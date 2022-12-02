@@ -30,9 +30,12 @@ namespace Oculus.Avatar2
     ///
     public class GpuSkinningConfiguration : OvrSingletonBehaviour<GpuSkinningConfiguration>
     {
-        internal enum TexturePrecision { Float, Half, Unorm16, Snorm10, Byte, Nibble }
+        private const string logScope = "GpuSkinningConfiguration";
 
-        internal static bool Initialized => hasInstance && !shuttingDown && _initComplete;
+        // Avoid skinning more avatars than MaxSkinnedAvatarsPerFrame per frame
+        public const uint MaxSkinnedAvatarsPerFrame = OvrAvatarGpuSkinningController.MaxSkinnedAvatarsPerFrame;
+
+        internal enum TexturePrecision { Float = 0, Half = 1, Unorm16 = 2, Snorm10 = 3, Byte = 4, Nibble = 5 }
 
         /// Maximum allowed skinning quality (bones per vertex).
         // Helper to query Unity skinWeights/boneWeights configuration as SkinningQuality enum
@@ -69,7 +72,7 @@ namespace Oculus.Avatar2
 
         /// Fallback skinning type (when skinning implementation is not specified).
         // Used if Entity does not specify and DefaultSkinningType == SkinningConfig.DEFAULT
-        private const SkinningConfig FallbackSkinningType = SkinningConfig.UNITY;
+        private SkinningConfig FallbackSkinningType = SkinningConfig.OVR_UNITY_GPU_FULL;
 
         /// Skinning quality (bones per vertex) used for each level of detail.
         [SerializeField]
@@ -109,6 +112,11 @@ namespace Oculus.Avatar2
         [SerializeField]
         readonly internal GraphicsFormat IndirectionFormat = GraphicsFormat.R32G32B32A32_SFloat;
 
+        [Header("Performance Optimizations (Advanced)")]
+        [Tooltip("Enables Support for Application Space Warp. Applications still need to enable ASW.")]
+        [SerializeField]
+        internal bool SupportApplicationSpaceWarp;
+
         [Header("Experimental Settings (Advanced, Unsupported)")]
 
         /// Enable motion smoothing for GPU skinning.
@@ -133,16 +141,11 @@ namespace Oculus.Avatar2
         // Shader to use for skinning.
         public Shader SkinToTextureShader => _SkinToTextureShader;
 
-        private static bool _initComplete = false;
-
         protected override void Initialize()
         {
-            _initComplete = true;
-        }
-
-        protected override void Shutdown()
-        {
-            _initComplete = false;
+            ValidateTexturePrecision(ref SourceMorphFormat, FormatUsage.Linear);
+            ValidateTexturePrecision(ref CombinedMorphFormat, FormatUsage.Blend);
+            ValidateTexturePrecision(ref SkinnerOutputFormat, FormatUsage.Render);
         }
 
         internal static void HandleDefaultConfig(ref SkinningConfig config)
@@ -151,7 +154,7 @@ namespace Oculus.Avatar2
             if (config == SkinningConfig.DEFAULT)
             {
                 var defaultConfig = Instance.DefaultSkinningType;
-                config = defaultConfig != SkinningConfig.DEFAULT ? defaultConfig : FallbackSkinningType;
+                config = defaultConfig != SkinningConfig.DEFAULT ? defaultConfig : Instance.FallbackSkinningType;
             }
         }
 
@@ -165,14 +168,53 @@ namespace Oculus.Avatar2
             return configValue;
         }
 
+        internal void ValidateFallbackSkinner(bool unitySkinnerSupported, bool gpuSkinnerSupported)
+        {
+            if (!gpuSkinnerSupported && FallbackSkinningType == SkinningConfig.OVR_UNITY_GPU_FULL)
+            {
+                FallbackSkinningType = unitySkinnerSupported ? SkinningConfig.UNITY : SkinningConfig.NONE;
+            }
+        }
+
+        private void ValidateTexturePrecision(ref TexturePrecision precision, FormatUsage usage)
+        {
+            var configPrecision = precision;
+
+            // Float is "lowest common denominator" - if the system doesn't support that it can't gpu skin
+            // TODO: Trigger fallback to UnitySMR if float isn't supported? Should be caught by ShaderModel check
+            while (precision > TexturePrecision.Float)
+            {
+                var graphicsFormat = precision.GetGraphicsFormat();
+                if (SystemInfo.IsFormatSupported(graphicsFormat, usage))
+                {
+                    // precision is supported - use it
+                    break;
+                }
+
+                // precision is not supported - drop down to next simpler/more-compatible format
+                precision--;
+            }
+
+            if (precision != configPrecision)
+            {
+                OvrAvatarLog.LogWarning(
+                    $"Configured precision {configPrecision} unsupported for usage {usage}"
+                    + $" - falling back to {precision} for compatibility"
+                    , logScope, this);
+            }
+        }
+
 #if UNITY_EDITOR
-        protected void OnValidate()
+        protected virtual void OnValidate()
         {
             EnforceValidFormatMorph(ref SourceMorphFormat);
             EnforceValidFormat(ref CombinedMorphFormat);
             EnforceValidFormat(ref SkinnerOutputFormat);
 
             ValidateQualityPerLOD();
+
+            CheckDefaultShader(ref _CombineMorphTargetsShader, "Avatar/CombineMorphTargets");
+            CheckDefaultShader(ref _SkinToTextureShader, "Avatar/SkinToTexture");
         }
 
         private void EnforceValidFormat(ref TexturePrecision precision)
@@ -217,6 +259,14 @@ namespace Oculus.Avatar2
                 {
                     QualityPerLOD[newIdx] = fillValue;
                 }
+            }
+        }
+
+        private void CheckDefaultShader(ref Shader shaderProperty, string defaultShaderName)
+        {
+            if (shaderProperty == null)
+            {
+                shaderProperty = Shader.Find(defaultShaderName);
             }
         }
 #endif

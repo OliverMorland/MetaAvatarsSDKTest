@@ -4,6 +4,8 @@ using Unity.Collections;
 
 using UnityEngine;
 
+using Oculus.Avatar2;
+
 namespace Oculus.Skinning.GpuSkinning
 {
     internal interface IOvrGpuJointSkinnerDrawCall
@@ -27,6 +29,8 @@ namespace Oculus.Skinning.GpuSkinning
             OvrExpandableTextureArray neutralPoseTexture,
             int blockDataStrideBytes)
         {
+            OvrAvatarLog.Assert(skinningShader != null);
+
             _skinningMaterial = new Material(skinningShader);
             _neutralPoseTex = neutralPoseTexture;
 
@@ -60,7 +64,6 @@ namespace Oculus.Skinning.GpuSkinning
 
         public virtual void Destroy()
         {
-            _blockEnabledBuffer?.Release();
             _blockDataBuffer?.Release();
 
             if (_mesh != null)
@@ -192,19 +195,14 @@ namespace Oculus.Skinning.GpuSkinning
                 FlushBlockEnabled(_blockEnabledFrameZero);
                 FlushBlockEnabled(_blockEnabledFrameOne);
 
-                _blockEnabledBuffer?.Release();
-                _blockEnabledBuffer = new ComputeBuffer(newNumBlocks, BYTES_PER_FLOAT);
-
                 SetBuffersInMaterial();
             }
 
-            // only one new block of data has been introduced, so set it here:
-            var nativeWrapper = new NativeArray<TBlockData>(1, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-            {
-                nativeWrapper[0] = blockData;
-                _blockDataBuffer.SetData(nativeWrapper, 0, blockIndex, 1);
-            }
-            nativeWrapper.Dispose();
+            // going to wait to set this on the main thread, to borrow the pipeline barrier unity will set for this buffer.
+            _newBlockData = blockData;
+            _newBlockIndex = blockIndex;
+            _hasNewBlockData = true;
+
             return layoutHandle;
         }
 
@@ -215,7 +213,7 @@ namespace Oculus.Skinning.GpuSkinning
 
         public void Draw(SkinningOutputFrame writeDest)
         {
-            switch (writeDest )
+            switch (writeDest)
             {
                 case SkinningOutputFrame.FrameZero:
                     DrawToFrame(ref _areAnyBlocksEnabledFrameZero, _blockEnabledFrameZero);
@@ -233,10 +231,27 @@ namespace Oculus.Skinning.GpuSkinning
             {
                 return;
             }
-            Debug.Assert(_blockEnabledBuffer != null);
 
             // Copy from block enabled array to compute buffer
-            _blockEnabledBuffer.SetData(blockEnabledArray, 0, 0, blockEnabledArray.Length);
+            Debug.Assert(blockEnabledArray.Length == 0 || blockEnabledArray.Length == 1);
+            float blockEnabled = (blockEnabledArray.Length >= 1) ? blockEnabledArray[0] : 0.0f;
+            _skinningMaterial.SetFloat(BLOCK_ENABLED_PROP, blockEnabled);
+
+            // We are delaying setting the data for this block until here. Unity isn't
+            // properly putting a pipeline barrier for our neutral pose texture upload.
+            // but it does for this kind of buffer, so by waiting to here, the barrier
+            // for this buffer will also apply to the neutral pose texture, and we won't
+            // get a screen flash in vulkan.
+            if (_hasNewBlockData)
+            {
+                // only one new block of data has been introduced, so set it here:
+                var nativeWrapper = new NativeArray<TBlockData>(1, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+                {
+                    nativeWrapper[0] = _newBlockData;
+                    _blockDataBuffer.SetData(nativeWrapper, 0, _newBlockIndex, 1);
+                }
+                _hasNewBlockData = false;
+            }
 
             // Don't care about matrices as the shader used should handle clip space
             // conversions without matrices (due to how quads set up)
@@ -276,10 +291,9 @@ namespace Oculus.Skinning.GpuSkinning
         private void SetBuffersInMaterial()
         {
             _skinningMaterial.SetBuffer(BLOCK_DATA_PROP, _blockDataBuffer);
-            _skinningMaterial.SetBuffer(BLOCKS_ENABLED_PROP, _blockEnabledBuffer);
         }
 
-        private void SetNeutralPoseTextureInMaterial(Texture texture)
+        private void SetNeutralPoseTextureInMaterial(Texture2DArray texture)
         {
             _skinningMaterial.SetTexture(NEUTRAL_POSE_TEX_PROP, texture);
         }
@@ -316,7 +330,10 @@ namespace Oculus.Skinning.GpuSkinning
         private OvrExpandableTextureArray _neutralPoseTex;
 
         private ComputeBuffer _blockDataBuffer = null;
-        private ComputeBuffer _blockEnabledBuffer = null;
+
+        private bool _hasNewBlockData = false;
+        private int _newBlockIndex;
+        private TBlockData _newBlockData;
 
         private readonly int _blockDataStrideBytes;
         // The Unity API for ComputeBuffer only allows setting via
@@ -337,7 +354,7 @@ namespace Oculus.Skinning.GpuSkinning
         private const int MAX_QUADS = ushort.MaxValue / NUM_VERTS_PER_QUAD;
 
         private static readonly int NEUTRAL_POSE_TEX_PROP = Shader.PropertyToID("u_NeutralPoseTex");
-        private static readonly int BLOCKS_ENABLED_PROP = Shader.PropertyToID("u_BlockEnabled");
+        private static readonly int BLOCK_ENABLED_PROP = Shader.PropertyToID("u_BlockEnabled");
         private static readonly int BLOCK_DATA_PROP = Shader.PropertyToID("u_BlockData");
 
         private static readonly int OUTPUT_SCALE_BIAS_PROP = Shader.PropertyToID("u_OutputScaleBias");

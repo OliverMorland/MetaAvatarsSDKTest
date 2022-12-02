@@ -25,14 +25,14 @@ namespace Oculus.Avatar2
         public Texture DiffuseEnvironmentCubeMap;
         private Texture _previousDiffuseEnvironmentCubeMap;
         [Tooltip("Diffuse environment sampler shader parameter name.")]
-        public string DiffuseEnvironmentShaderParameterName = "u_DiffuseEnvSampler";
+        public string[] DiffuseEnvironmentShaderParameterNames = new string[] { "u_DiffuseEnvSampler", "u_LambertianEnvSampler" };
 
         [Tooltip("Ambient specular reflections on a multiple mip texture, chosen via the roughness of materials.")]
         public Texture SpecularEnvironmentCubeMap;
         private Texture _previousSpecularEnvironmentCubeMap;
         [Tooltip("Specular environment sampler shader parameter name.")]
         [SerializeField]
-        private string SpecularEnvironmentShaderParameterName = "u_SpecularEnvSampler";
+        private string[] SpecularEnvironmentShaderParameterNames = new string[] { "u_SpecularEnvSampler", "u_GGXEnvSampler" };
         [Tooltip("Represents the number of mips in the specular texture map. This is automatically set when setting the texture.")]
         public string SpecularMapMipCountShaderPameterName = "u_MipCount";
 
@@ -40,7 +40,7 @@ namespace Oculus.Avatar2
         public Texture BrdfLutMap;
         private Texture _previousBrdfLutMap;
         [Tooltip("BRDF Lut sammpler shader parameter name.")]
-        public string BrdfLutShaderParameterName = "u_brdfLUT";
+        public string[] BrdfLutShaderParameterNames = new string[] { "u_brdfLUT", "u_GGXLUT"};
 
         [Tooltip("Optional world object cubemap material, the specular environment cube above will be set into it.")]
         public Material CubeMapMaterial;
@@ -54,9 +54,18 @@ namespace Oculus.Avatar2
         }
 
         private void SetAllIblGlobalScopeParams() {
-            Shader.SetGlobalTexture(DiffuseEnvironmentShaderParameterName, DiffuseEnvironmentCubeMap);
-            Shader.SetGlobalTexture(SpecularEnvironmentShaderParameterName, SpecularEnvironmentCubeMap);
-            Shader.SetGlobalTexture(BrdfLutShaderParameterName, BrdfLutMap);
+            foreach (var parameterName in DiffuseEnvironmentShaderParameterNames)
+            {
+                Shader.SetGlobalTexture(parameterName, DiffuseEnvironmentCubeMap);
+            }
+            foreach (var parameterName in SpecularEnvironmentShaderParameterNames)
+            {
+                Shader.SetGlobalTexture(parameterName, SpecularEnvironmentCubeMap);
+            }
+            foreach (var parameterName in BrdfLutShaderParameterNames)
+            {
+                Shader.SetGlobalTexture(parameterName, BrdfLutMap);
+            }
 #if UNITY_2018
             Shader.SetGlobalInt(SpecularMapMipCountShaderPameterName, 10);
 #else
@@ -73,19 +82,19 @@ namespace Oculus.Avatar2
             _previousBrdfLutMap = BrdfLutMap;
         }
 
-        private void OnEnable()
+        protected virtual void OnEnable()
         {
             SetExposureScopeParm();
             SetAllIblGlobalScopeParams();
         }
 
-        private void OnDisable()
+        protected virtual void OnDisable()
         {
 
         }
 
 #if ALLOW_DYNAMIC_IBL_SWTICH
-        private void Update()
+        protected virtual void Update()
         {
             if(CurrentExposure != _previousExposure) {
                 SetExposureScopeParm();

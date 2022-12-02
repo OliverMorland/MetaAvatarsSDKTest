@@ -1,3 +1,9 @@
+#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS && !OVRPLUGIN_UNSUPPORTED_PLATFORM
+#define USING_XR_SDK
+#endif
+
+#if USING_XR_SDK
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -17,7 +23,7 @@ public enum OvrPlatformInitStatus
 public static class OvrPlatformInit
 {
     private const string logScope = "examplePlatformInit";
-    
+
     public static OvrPlatformInitStatus status { get; private set; } = OvrPlatformInitStatus.NotStarted;
 
     public static void InitializeOvrPlatform()
@@ -27,7 +33,7 @@ public static class OvrPlatformInit
             OvrAvatarLog.LogWarning("OvrPlatform is already initialized.");
             return;
         }
-        
+
         try
         {
             status = OvrPlatformInitStatus.Initializing;
@@ -45,7 +51,7 @@ public static class OvrPlatformInit
                     Entitlements.IsUserEntitledToApplication().OnComplete(CheckEntitlement);
                 }
             }
-            
+
             void CheckEntitlement(Message msg)
             {
                 if (msg.IsError == false)
@@ -89,3 +95,5 @@ public static class OvrPlatformInit
         }
     }
 }
+
+#endif

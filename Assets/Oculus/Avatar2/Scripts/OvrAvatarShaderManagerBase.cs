@@ -22,7 +22,7 @@ namespace Oculus.Avatar2
     {
 
         // The intent here is for each shader "type" to have it's own shader configuration.
-        // Possible shader types are "combined", "seperate", "eyes", "hair", "transparent".
+        // Possible shader types are "combined", "separate", "eyes", "hair", "transparent".
         // We need to know, first from the "material" specification in the GLTF, and second
         // from the parts metadata in GLTF meshes/primitives, what shader model to use...
         public enum ShaderType
@@ -35,7 +35,8 @@ namespace Oculus.Avatar2
             Skin,
             LeftEye,
             RightEye,
-            Hair
+            Hair,
+            FastLoad
         }
         /// Gets the number of shader types.
         public static readonly int ShaderTypeCount = Enum.GetNames(typeof(ShaderType)).Length;
@@ -51,7 +52,7 @@ namespace Oculus.Avatar2
         ///
         public abstract OvrAvatarShaderConfiguration GetConfiguration(ShaderType type);
 
-        protected void Start()
+        protected virtual void Start()
         {
             Initialize(true);
         }
@@ -81,13 +82,17 @@ namespace Oculus.Avatar2
         /// @return shader type to use.
         /// @see GetConfiguration
         ///
-        public virtual ShaderType DetermineConfiguration(string materialName, bool hasMetallic, bool hasSpecular)
+        public virtual ShaderType DetermineConfiguration(string materialName, bool hasMetallic, bool hasSpecular, bool hasTextures)
         {
             // TODO: look at the texture inputs for a material to determine if they are a texture array or not.
             // This presents a difficult situation because we need to know information about the textures before
             // determining the shader type to begin synthesis of the material. It may require an extra call to
             // OvrAvatarLibrary.MakeTexture() or something equivalent.
 
+            if (!hasTextures)
+            {
+                return ShaderType.FastLoad;
+            }
             if (hasMetallic || hasSpecular)
             {
                 return ShaderType.Default;
@@ -113,6 +118,7 @@ namespace Oculus.Avatar2
             configuration.NameTextureParameter_normalTexture = "_BumpMap";
             configuration.NameTextureParameter_occlusionTexture = "_OcclusionMap";
             configuration.NameTextureParameter_emissiveTexture = "_EmissiveMap";
+            configuration.NameTextureParameter_flowTexture = "_FlowMap";
 
             configuration.NameColorParameter_BaseColorFactor = "_Color";
             configuration.NameColorParameter_DiffuseFactor = "_Diffuse";

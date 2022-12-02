@@ -1,3 +1,7 @@
+#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS && !OVRPLUGIN_UNSUPPORTED_PLATFORM
+#define USING_XR_SDK
+#endif
+
 using Oculus.Avatar2;
 using UnityEngine;
 using Node = UnityEngine.XR.XRNode;
@@ -7,15 +11,21 @@ using Node = UnityEngine.XR.XRNode;
  */
 public class SampleInputTrackingDelegate : OvrAvatarInputTrackingDelegate
 {
-    private OVRCameraRig _ovrCameraRig = null;
 
+#if USING_XR_SDK
+    private OVRCameraRig _ovrCameraRig = null;
+#endif
+
+#if USING_XR_SDK
     public SampleInputTrackingDelegate(OVRCameraRig ovrCameraRig)
     {
         _ovrCameraRig = ovrCameraRig;
     }
-
+#endif
     public override bool GetRawInputTrackingState(out OvrAvatarInputTrackingState inputTrackingState)
     {
+        inputTrackingState = default;
+#if USING_XR_SDK
         bool leftControllerActive = false;
         bool rightControllerActive = false;
         if (OVRInput.GetActiveController() != OVRInput.Controller.Hands)
@@ -26,22 +36,18 @@ public class SampleInputTrackingDelegate : OvrAvatarInputTrackingDelegate
 
         if (_ovrCameraRig)
         {
-            inputTrackingState = new OvrAvatarInputTrackingState
-            {
-                headsetActive = true,
-                leftControllerActive = leftControllerActive,
-                rightControllerActive = rightControllerActive,
-                leftControllerVisible = false,
-                rightControllerVisible = false,
-                headset = _ovrCameraRig.centerEyeAnchor,
-                leftController = _ovrCameraRig.leftControllerAnchor,
-                rightController = _ovrCameraRig.rightControllerAnchor
-            };
+            inputTrackingState.headsetActive = true;
+            inputTrackingState.leftControllerActive = leftControllerActive;
+            inputTrackingState.rightControllerActive = rightControllerActive;
+            inputTrackingState.leftControllerVisible = false;
+            inputTrackingState.rightControllerVisible = false;
+            inputTrackingState.headset = (CAPI.ovrAvatar2Transform)_ovrCameraRig.centerEyeAnchor;
+            inputTrackingState.leftController = (CAPI.ovrAvatar2Transform)_ovrCameraRig.leftHandAnchor;
+            inputTrackingState.rightController = (CAPI.ovrAvatar2Transform)_ovrCameraRig.rightHandAnchor;
             return true;
         }
         else if (OVRNodeStateProperties.IsHmdPresent())
         {
-            inputTrackingState = new OvrAvatarInputTrackingState();
             inputTrackingState.headsetActive = true;
             inputTrackingState.leftControllerActive = leftControllerActive;
             inputTrackingState.rightControllerActive = rightControllerActive;
@@ -52,7 +58,6 @@ public class SampleInputTrackingDelegate : OvrAvatarInputTrackingDelegate
                 OVRPlugin.Node.EyeCenter, OVRPlugin.Step.Render, out var headPos))
             {
                 inputTrackingState.headset.position = headPos;
-
             }
             else
             {
@@ -79,8 +84,8 @@ public class SampleInputTrackingDelegate : OvrAvatarInputTrackingDelegate
             inputTrackingState.rightController.scale = Vector3.one;
             return true;
         }
+#endif
 
-        inputTrackingState = default;
         return false;
     }
 }

@@ -2,10 +2,14 @@ using UnityEngine;
 
 namespace Oculus.Avatar2.Utils {
   public class AvatarLODLookat : MonoBehaviour {
-    [SerializeField] public Transform xform;
-    [SerializeField] public UpVectorMode upVectorMode = UpVectorMode.WORLD_UP;
-    [SerializeField] public Vector3 upVector = Vector3.up;
-    [SerializeField] public GameObject upObject = null;
+    [SerializeField]
+    public Transform xform;
+    [SerializeField]
+    public UpVectorMode upVectorMode = UpVectorMode.WORLD_UP;
+    [SerializeField]
+    public Vector3 upVector = Vector3.up;
+    [SerializeField]
+    public GameObject upObject = null;
     private Transform camXform = null;
 
     public enum UpVectorMode {
@@ -14,10 +18,10 @@ namespace Oculus.Avatar2.Utils {
       OBJECT_AIM // Use upVector
     }
 
-    private void Start() {
+    protected virtual void Start() {
     }
 
-    private void Update() {
+    protected virtual void Update() {
       if (xform == null)
         xform = this.transform;
 

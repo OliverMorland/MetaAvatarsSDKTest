@@ -35,11 +35,11 @@ namespace Oculus.Avatar2 {
       }
     }
 
-    protected void OnEnable() {
+    protected virtual void OnEnable() {
       ResetLODChildrenParentState();
     }
-    
-    protected void OnDisable() {
+
+    protected virtual void OnDisable() {
       ResetLODChildrenParentState();
     }
     

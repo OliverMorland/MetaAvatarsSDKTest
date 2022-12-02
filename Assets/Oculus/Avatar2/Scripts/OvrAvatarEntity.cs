@@ -1,3 +1,5 @@
+// #define SUBMESH_DEBUGGING
+
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -8,6 +10,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Profiling;
 using UnityEngine.Serialization;
+using UnityEngine.Android;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -28,6 +31,7 @@ using Application = UnityEngine.Application;
  */
 namespace Oculus.Avatar2
 {
+
     /**
      * Describes a single avatar with multiple levels of detail.
      *
@@ -138,14 +142,8 @@ namespace Oculus.Avatar2
         // TODO: Remove and replace IsCreated and IsLoading with corresponding checks of LoadState?
         public bool IsCreated => entityId != CAPI.ovrAvatar2EntityId.Invalid;
 
-        // Disable obsolete parameter warning.  TODO need to create a different way to implement this
-#pragma warning disable 618
-        /// This is poorly named.
-        /// This means that Unity meshes/gameobjects are currently being
-        /// built, AFTER assets were successfully loaded from disk.
-        /// @see IsPendingAvatar if you want to know if the entire load is in progress
-        public bool IsLoading => LoadState == LoadingState.Loading;
-#pragma warning restore 618
+        /// True if the model assets have been loaded, and are currently being applied to the avatar.
+        public bool IsApplyingModels { get; private set; }
 
         /// True if the assets for an avatar are still loading.
         public bool IsPendingAvatar
@@ -179,6 +177,15 @@ namespace Oculus.Avatar2
         // External classes or overrides can add to this Action as needed.
         public event Action<bool> OnCulled;
 
+        // The list of child GPU instances of the avatar
+        private readonly List<GPUInstancedAvatar> GPUInstances = new List<GPUInstancedAvatar>();
+
+        // Used to track fast loading of presets to ensure correct cleanup
+        private readonly List<string> fastLoadPresetPaths = new List<string>();
+
+        // Used to track when entity is loading full preset
+        private bool isLoadingFullPreset = false;
+
         //:: Serialized Fields
         /**
          * Avatar creation configuration to use when creating this avatar.
@@ -204,23 +211,45 @@ namespace Oculus.Avatar2
             {
                 lodFlags = CAPI.ovrAvatar2EntityLODFlags.All,
                 manifestationFlags = CAPI.ovrAvatar2EntityManifestationFlags.Half,
-                viewFlags = CAPI.ovrAvatar2EntityViewFlags.All
+                viewFlags = CAPI.ovrAvatar2EntityViewFlags.All,
+                subMeshInclusionFlags = CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All
             }
         };
 
-        [SerializeField] private CAPI.ovrAvatar2EntityViewFlags _activeView = CAPI.ovrAvatar2EntityViewFlags.FirstPerson;
+        [SerializeField]
+        private CAPI.ovrAvatar2EntityViewFlags _activeView = CAPI.ovrAvatar2EntityViewFlags.FirstPerson;
         [SerializeField]
         private CAPI.ovrAvatar2EntityManifestationFlags _activeManifestation = CAPI.ovrAvatar2EntityManifestationFlags.Half;
 
+        [Tooltip("These flags allow the original sub-meshes used to create the avatar to be enbled in the index buffer. This only works in Unity Editor. To use this for production, modify the CreationInfo.RenderFilters.SubMeshInclusionFlags above.")]
+        [SerializeField]
+        private CAPI.ovrAvatar2EntitySubMeshInclusionFlags _activeSubMeshes = CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All;
+
+        [Tooltip("If new sub-mesh types are introduced after this version of the SDK, theis flag determines if they are visible by default. If excluding only one mesh it's best to heep this on. If including ony one mesh it's best to keep this off.")]
+        [SerializeField]
+        private bool _activeSubMeshesIncludeUntyped = true;
+
         // Tracking
         [Header("Tracking Input")]
-        [SerializeField] private OvrAvatarBodyTrackingBehavior _bodyTracking;
-        [SerializeField] private OvrAvatarLipSyncBehavior _lipSync;
+        [SerializeField]
+        private OvrAvatarBodyTrackingBehavior _bodyTracking;
+
+        [FormerlySerializedAs("_faceTrackingBehavior")]
+        [SerializeField]
+        private OvrAvatarFacePoseBehavior _facePoseBehavior;
+
+        [FormerlySerializedAs("_eyeTrackingBehavior")]
+        [SerializeField]
+        private OvrAvatarEyePoseBehavior _eyePoseBehavior;
+
+        [SerializeField]
+        private OvrAvatarLipSyncBehavior _lipSync;
 
         [Header("Skeleton Output")]
 
         [Tooltip("Joints which will always have their Unity.Transform updated")]
-        [SerializeField] protected CAPI.ovrAvatar2JointType[] _criticalJointTypes = Array.Empty<CAPI.ovrAvatar2JointType>();
+        [SerializeField]
+        protected CAPI.ovrAvatar2JointType[] _criticalJointTypes = Array.Empty<CAPI.ovrAvatar2JointType>();
 
         private uint[] _unityUpdateJointIndices = Array.Empty<uint>(); // names with missing/inactive joints removed
 
@@ -230,6 +259,8 @@ namespace Oculus.Avatar2
         protected CAPI.ovrAvatar2EntityId entityId { get; private set; } = CAPI.ovrAvatar2EntityId.Invalid;
 
         protected UInt64 _userId = 0;
+
+        protected CAPI.ovrAvatar2EntityViewFlags ActiveView { get; set; }
 
         //:: Private Variables
 
@@ -309,6 +340,8 @@ namespace Oculus.Avatar2
             }
         }
 
+        private MaterialPropertyBlock _gpuInstanceMaterialProperties = null;
+
         /////////////////////////////////////////////////
         //:: Core Unity Functions
 
@@ -333,7 +366,7 @@ namespace Oculus.Avatar2
 
         public void UpdateLODInternal()
         {
-            if (!isActiveAndEnabled || !IsCreated || IsLoading)
+            if (!isActiveAndEnabled || !IsCreated)
             {
                 return;
             }
@@ -397,7 +430,7 @@ namespace Oculus.Avatar2
 
             Profiler.BeginSample("OvrAvatarEntity::UpdateInternal");
 
-            if (IsLoading || IsPendingAvatar)
+            if (IsApplyingModels || IsPendingAvatar)
             {
                 Profiler.BeginSample("OvrAvatarEntity::UpdateLoadingStatus");
                 // TODO: What other errors should we be checking for?
@@ -411,34 +444,32 @@ namespace Oculus.Avatar2
 #pragma warning disable 618
                     LoadState = LoadingState.Failed;
 #pragma warning restore 618
+                    IsApplyingModels = false;
                 }
                 Profiler.EndSample();
             }
 
-            if (!IsLoading)
+            // Skip active render state updates if the entity is not active
+            if (EntityActive)
             {
-                // Skip active render state updates if the entity is not active
-                if (EntityActive)
-                {
-                    Profiler.BeginSample("OvrAvatarEntity::EntityActiveRenderUpdate");
-                    EntityActiveRenderUpdate();
-                    Profiler.EndSample();
-                }
+                Profiler.BeginSample("OvrAvatarEntity::EntityActiveRenderUpdate");
+                EntityActiveRenderUpdate(dT);
+                Profiler.EndSample();
+            }
 
-                // Only apply render updates if created and not loading
-                if (IsCreated && !IsLoading)
-                {
-                    Profiler.BeginSample("OvrAvatarEntity::PerFrameRenderUpdate");
-                    PerFrameRenderUpdate(dT);
-                    Profiler.EndSample();
-                }
+            // Only apply render updates if created and not loading
+            if (IsCreated)
+            {
+                Profiler.BeginSample("OvrAvatarEntity::PerFrameRenderUpdate");
+                PerFrameRenderUpdate(dT);
+                Profiler.EndSample();
+            }
 
-                if (!IsLocal && useRenderLods)
-                {
-                    Profiler.BeginSample("OvrAvatarEntity::ComputeNetworkLod");
-                    ComputeNetworkLod();
-                    Profiler.EndSample();
-                }
+            if (!IsLocal && useRenderLods && !IsApplyingModels)
+            {
+                Profiler.BeginSample("OvrAvatarEntity::ComputeNetworkLod");
+                ComputeNetworkLod();
+                Profiler.EndSample();
             }
 
             // accessing obsolete members
@@ -455,7 +486,7 @@ namespace Oculus.Avatar2
             Profiler.EndSample(); // "OvrAvatarEntity::UpdateInternal"
         }
 
-        private void OnDestroy()
+        protected virtual void OnDestroy()
         {
             Teardown();
             OnDestroyCalled();
@@ -480,11 +511,16 @@ namespace Oculus.Avatar2
         {
             // Allows the tracking to up updated in the editor.
             SetBodyTracking(_bodyTracking);
+
+            SetFacePoseProvider(_facePoseBehavior);
+            SetEyePoseProvider(_eyePoseBehavior);
+
             SetLipSync(_lipSync);
             if (IsCreated)
             {
                 SetActiveManifestation(_activeManifestation);
                 SetActiveView(_activeView);
+                SetActiveSubMeshInclusion(_activeSubMeshes);
                 Hidden = Hidden;
             }
         }
@@ -504,31 +540,9 @@ namespace Oculus.Avatar2
          * The value of @ref OvrAvatarEntity._creationInfo specifies the
          * avatar configuration to create this entity.
          *
-         * You can customize entity creation by setting
-         * *_creationInfo* flags before calling [CreateEntity()](@ref OvrAvatarEntity.CreateEntity)
-         * It is necessary to set all of the members of @ref ovrAvatar2EntityCreateInfo,
-         * the default values are unspecified.
-         *
-         * @code
-         * class MyAvatar : public OvrAvatarEntity
-         * {
-         * public void CreateAvatar()
-         * {
-         *      var createInfo = new CAPI.ovrAvatar2EntityCreateInfo
-         *      {
-         *          features = CAPI.ovrAvatar2EntityFeatures.Preset_Default,
-         *          renderFilters = new CAPI.ovrAvatar2EntityFilters
-         *          {
-         *               lodFlags = CAPI.ovrAvatar2EntityLODFlags.All,
-         *               manifestationFlags = CAPI.ovrAvatar2EntityManifestationFlags.Half,
-         *               viewFlags = CAPI.ovrAvatar2EntityViewFlags.All
-         *          }
-         *      };
-         *     _creationInfo = createInfo;
-         *     base.CreateEntity();
-         * }
-         * };
-         * @endcode
+         * You can customize entity creation and settings by extending this class and overriding
+         * [ConfigureCreationInfo](@ref OvrAvatarEntity.ConfigureCreationInfo) or
+         * [ConfigureEntity](@ref OvrAvatarEntity.ConfigureEntity)
          * @see CAPI.ovrAvatar2EntityCreateInfo
          * @see CAPI.ovrAvatar2EntityFeatures
          * @see CAPI.ovrAvatar2EntityManifestationFlags
@@ -545,6 +559,13 @@ namespace Oculus.Avatar2
             {
                 _material = new OvrAvatarMaterial();
             }
+
+            var createInfoOverride = ConfigureCreationInfo();
+            if (createInfoOverride != null)
+            {
+                _creationInfo = (CAPI.ovrAvatar2EntityCreateInfo)createInfoOverride;
+            }
+
             IsPendingDefaultModel = HasAllFeatures(CAPI.ovrAvatar2EntityFeatures.UseDefaultModel);
             ValidateSkinningType();
             SetRequiredFeatures();
@@ -563,11 +584,13 @@ namespace Oculus.Avatar2
             LoadState = LoadingState.Created;
 #pragma warning restore 618
 
+            IsApplyingModels = false;
             CurrentState = AvatarState.Created;
             InvokeOnCreated();
 
             SetActiveView(_activeView);
             SetActiveManifestation(_activeManifestation);
+            SetActiveSubMeshInclusion(_activeSubMeshes);
 
             if (!IsLocal)
             {
@@ -577,7 +600,11 @@ namespace Oculus.Avatar2
             OvrAvatarLog.LogDebug($"Entity {entityId} created as a {(IsLocal ? "local" : "remote")} avatar", logScope, this);
 
             SetBodyTracking(_bodyTracking);
+            SetFacePoseProvider(_facePoseBehavior);
+            SetEyePoseProvider(_eyePoseBehavior);
             SetLipSync(_lipSync);
+
+            ConfigureEntity();
 
             // For right now, only GPU skinning supports motion smoothing
             if (UseGpuSkinning && UseMotionSmoothingRenderer)
@@ -607,22 +634,226 @@ namespace Oculus.Avatar2
             }
         }
 
+        /**
+         * To entity settings, extend this class and override ConfigureEntity
+         *
+         * @code
+         * class MyAvatar : public OvrAvatarEntity
+         * {
+         *     protected override void ConfigureEntity()
+         *     {
+         *
+         *         // ex: set to third person
+         *         SetActiveView(...);
+         *         SetActiveManifestation(...);
+         *         SetActiveSubMeshInclusion(...);
+         *         SetBodyTracking(...);
+         *         SetLipSync(...);
+         *     }
+         * @endcode
+         *
+        **/
+        protected virtual void ConfigureEntity()
+        {
+            OvrAvatarLog.LogDebug("Base ConfigureEntity Invoked", logScope, this);
+        }
+
+        /**
+         * To configure creation info on an entity, extend this class and override ConfigureCreationInfo
+         *
+         * @code
+         * class MyAvatar : public OvrAvatarEntity
+         * {
+         *     protected override void ConfigureCreationInfo()
+         *     {
+         *        return new CAPI.ovrAvatar2EntityCreateInfo
+         *           {
+         *               features = CAPI.ovrAvatar2EntityFeatures.Preset_Default,
+         *               renderFilters = new CAPI.ovrAvatar2EntityFilters
+         *               {
+         *                   lodFlags = CAPI.ovrAvatar2EntityLODFlags.All,
+         *                   manifestationFlags = CAPI.ovrAvatar2EntityManifestationFlags.Half,
+         *                   viewFlags = CAPI.ovrAvatar2EntityViewFlags.All,
+         *                   subMeshInclusionFlags = CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All
+         *               }
+         *           };
+         *      }
+         * };
+         *
+         *  It is necessary to set all of the members of
+         *  @ref ovrAvatar2EntityCreateInfo. The default values are unspecified.
+         * @endcode
+         *
+        **/
+        protected virtual CAPI.ovrAvatar2EntityCreateInfo? ConfigureCreationInfo()
+        {
+            OvrAvatarLog.LogDebug("Base ConfigureCreationInfo Invoked", logScope, this);
+            return null;
+        }
+
+        public class GPUInstancedAvatar : MonoBehaviour
+        {
+            public Transform parentTransform = null;
+            // TODO: this can be passed to the class as a configuration parameter
+            private readonly Matrix4x4 _reflectionMatrix = new Matrix4x4(
+                new Vector4(-1.0f, 0.0f, 0.0f, 0.0f),
+                new Vector4(0.0f, 1.0f, 0.0f, 0.0f),
+                new Vector4(0.0f, 0.0f, 1.0f, 0.0f),
+                new Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+
+            public void SetTransform(Vector3 position, Quaternion rotation)
+            {
+                transform.localPosition = position;
+
+                // copy scale and rotation from the parent
+                transform.localScale = parentTransform.localScale;
+                transform.rotation = parentTransform.rotation;
+
+                transform.rotation *= rotation;
+            }
+
+            public Matrix4x4 GetTransform()
+            {
+                return _reflectionMatrix * transform.localToWorldMatrix;
+            }
+        }
+
+        public GameObject CreateGPUInstance()
+        {
+            // Will be used later during rendering
+            if (_gpuInstanceMaterialProperties == null)
+            {
+                _gpuInstanceMaterialProperties = new MaterialPropertyBlock();
+            }
+
+            SetActiveView(CAPI.ovrAvatar2EntityViewFlags.ThirdPerson);
+            var instance = new GameObject($"{name}_gpu_instance_{GPUInstances.Count}");
+            var gpuInstancedAvatar = instance.AddComponent<GPUInstancedAvatar>();
+            GPUInstances.Add(gpuInstancedAvatar);
+            return instance;
+        }
+
+        public bool DestroyGPUInstance(GameObject instance)
+        {
+            OvrAvatarLog.Assert(instance != null, logScope, this);
+            var gpuInstancedAvatar = instance.GetComponent<GPUInstancedAvatar>();
+            if (gpuInstancedAvatar == null)
+            {
+                OvrAvatarLog.LogError("Attempted to destroy GPUInstance which does not have a GPUInstancedAvatar component", logScope, instance);
+                return false;
+            }
+            return DestroyGPUInstance(gpuInstancedAvatar);
+        }
+
+        public bool DestroyGPUInstance(GPUInstancedAvatar instance)
+        {
+            OvrAvatarLog.Assert(instance != null, logScope, this);
+            if (!GPUInstances.Remove(instance))
+            {
+                OvrAvatarLog.LogError($"Passed instance {instance} doesn't belong to current OvrAvatarEntity", logScope, instance);
+                return false;
+            }
+
+            GPUInstancedAvatar.Destroy(instance);
+            return true;
+        }
+
+        private OvrAvatarSkinnedRenderable findActiveRenderable()
+        {
+            OvrAvatarSkinnedRenderable activeRenderable = null;
+            foreach (var keyval in _skinnedRenderables)
+            {
+                OvrAvatarSkinnedRenderable renderable = keyval.Value;
+                if (renderable.isActiveAndEnabled)
+                {
+                    activeRenderable = renderable;
+                    break;
+                }
+            }
+
+            return activeRenderable;
+        }
+
+        private void UpdateGPUInstances()
+        {
+            if (GPUInstances.Count == 0)
+            {
+                return;
+            }
+
+            Profiler.BeginSample("OvrAvatarEntity::UpdateGPUInstances");
+
+            var renderable = findActiveRenderable();
+            if (renderable == null) { return; }
+
+            renderable.GetRenderParameters(out var mesh, out var material, out var transform, _gpuInstanceMaterialProperties);
+            if (mesh == null || material == null || transform == null)
+            {
+                return;
+            }
+
+            foreach (var instance in GPUInstances)
+            {
+                // TODO: this loop can be replaced with calling DrawMeshInstanced for batched GPU instancing
+                // but as of 2/16/2022 this doesn't seem to work with the material we're using, perhaps
+                // something is making it incompatible with batched instancing
+                // Update parent transform so rotation and scale can be copied
+                instance.parentTransform = transform;
+                Graphics.DrawMesh(mesh, instance.GetTransform(), material, 0, null, 0, _gpuInstanceMaterialProperties);
+            }
+
+            Profiler.EndSample();
+        }
+
+        private readonly List<OvrAvatarSkinnedRenderable> _perFrameRenderableCache = new List<OvrAvatarSkinnedRenderable>();
         private void PerFrameRenderUpdate(float dT)
         {
-            Debug.Assert(IsCreated && !IsLoading);
+            Debug.Assert(IsCreated);
+
+            // Find the visible skinned renderables to update. Note if the renderers all have valid animation data
+            _perFrameRenderableCache.Clear();
+            var activeAndEnabledRenderables = _perFrameRenderableCache;
+            bool doAllRenderersHaveValidAnimationData = true;
+            foreach (var primRenderables in _visiblePrimitiveRenderers)
+            {
+                foreach (var primRenderable in primRenderables)
+                {
+                    var skinnedRenderable = primRenderable.skinnedRenderable;
+                    if (skinnedRenderable is null || !skinnedRenderable.isActiveAndEnabled) { continue; }
+
+                    activeAndEnabledRenderables.Add(skinnedRenderable);
+
+                    if (doAllRenderersHaveValidAnimationData && !skinnedRenderable.IsAnimationDataCompletelyValid)
+                    {
+                        // Not valid animation data, thus all renderers' data is not valid
+                        doAllRenderersHaveValidAnimationData = false;
+                    }
+                }
+            }
 
             Profiler.BeginSample("OvrAvatarEntity::UpdateAnimationTime");
-            _entityAnimator.UpdateAnimationTime(dT);
+            _entityAnimator.UpdateAnimationTime(dT, doAllRenderersHaveValidAnimationData);
             Profiler.EndSample();
 
             Profiler.BeginSample("OvrAvatarEntity::JointMonitor::UpdateJoints");
             _jointMonitor?.UpdateJoints(dT);
             Profiler.EndSample();
+
+            BroadcastPerFrameRenderUpdateToVisibleRenderables(activeAndEnabledRenderables);
+            UpdateGPUInstances();
         }
 
-        private void EntityActiveRenderUpdate()
+        private void BroadcastPerFrameRenderUpdateToVisibleRenderables(in List<OvrAvatarSkinnedRenderable> visibleRenderables)
         {
-            Debug.Assert(EntityActive && IsCreated && !IsLoading);
+            foreach (var skinnedRenderable in visibleRenderables)
+            {
+                skinnedRenderable.RenderFrameUpdate();
+            }
+        }
+
+        private void EntityActiveRenderUpdate(float dT)
+        {
+            Debug.Assert(EntityActive && IsCreated);
 
             // Check that our pose is valid
             if (!QueryEntityPose(out var entityPose, out var hierarchyVersion)) { return; }
@@ -637,12 +868,22 @@ namespace Oculus.Avatar2
             // TODO: Checking this isn't really part of "RenderUpdate", move outside this method
             if (_currentHierarchyVersion != hierarchyVersion)
             {
-                // TODO: This is not really doing a partial update, it's doing a teardown+replace
-                // Refresh current version to match new version
-                QueueUpdateSkeleton(hierarchyVersion);
+                // Verify an update to this version isn't already in progress
+                if (_targetHierarchyVersion != hierarchyVersion)
+                {
+                    // HACK: If a model is currently being applied, wait for it to finish to avoid race conditions
+                    if (IsApplyingModels)
+                    {
+                        // TODO: Cancel current skeleton update if one is in progress
+                        return;
+                    }
+                    // END-HACK: If a model is currently being applied, wait for it to finish to avoid race conditions
+                    // Refresh current Unity version to match the current runtime version
+                    QueueUpdateSkeleton(hierarchyVersion);
+                }
 
-                // We can not update our current render objects w/ the nativeSDK state (out of sync)
-                // Leave previous state (freeze render updates)
+                // We can not update our current render objects w/ the native runtime state (out of sync)
+                // Leave Unity in previous state (freeze render updates)
                 return;
             }
 
@@ -684,7 +925,7 @@ namespace Oculus.Avatar2
             UpdateAllNodes(in renderState);
 
             Profiler.BeginSample("OvrAvatarEntity::OnActiveRender");
-            OnActiveRender(in renderState, in entityPose, hierarchyVersion);
+            OnActiveRender(in renderState, in entityPose, hierarchyVersion, dT);
             Profiler.EndSample();
         }
 
@@ -692,11 +933,12 @@ namespace Oculus.Avatar2
         {
             _targetHierarchyVersion = hierarchyVersion;
 
-            OvrAvatarLog.Assert(!IsLoading);
+            OvrAvatarLog.Assert(!IsApplyingModels);
             // Reset load state
 #pragma warning disable 618
             LoadState = LoadingState.Loading;
 #pragma warning restore 618
+            IsApplyingModels = true;
 
             OvrAvatarManager.Instance.QueueLoadAvatar(this, () =>
             {
@@ -705,11 +947,12 @@ namespace Oculus.Avatar2
         }
         private void QueueBuildPrimitives()
         {
-            OvrAvatarLog.Assert(!IsLoading);
+            OvrAvatarLog.Assert(!IsApplyingModels);
             // Reset load state
 #pragma warning disable 618
             LoadState = LoadingState.Loading;
 #pragma warning restore 618
+            IsApplyingModels = true;
 
             OvrAvatarManager.Instance.QueueLoadAvatar(this, () =>
             {
@@ -718,14 +961,21 @@ namespace Oculus.Avatar2
         }
 
         // TODO*: Better naming when the lifecycle of the entity is fixed properly
-        private void OnActiveRender(in CAPI.ovrAvatar2EntityRenderState renderState, in CAPI.ovrAvatar2Pose entityPose, CAPI.ovrAvatar2HierarchyVersion hierVersion)
+        private void OnActiveRender(in CAPI.ovrAvatar2EntityRenderState renderState
+            , in CAPI.ovrAvatar2Pose entityPose
+            , CAPI.ovrAvatar2HierarchyVersion hierVersion
+            , float dT)
         {
-            OvrAvatarLog.AssertConstMessage(IsCreated, "OnActiveRender while not created", logScope, this);
-            OvrAvatarLog.AssertConstMessage(!IsLoading, "OnActiveRender while loading", logScope, this);
+            OvrAvatarLog.AssertConstMessage(IsCreated
+                , "OnActiveRender while not created", logScope, this);
 
             OvrAvatarLog.Assert(_currentHierarchyVersion == hierVersion, logScope, this);
-            _entityAnimator.AddNewAnimationFrame(Time.time, Time.deltaTime, entityPose, renderState);
 
+            _entityAnimator.AddNewAnimationFrame(
+                Time.time,
+                dT,
+                entityPose,
+                renderState);
 
             // Call obsolete function
 #pragma warning disable 618
@@ -735,7 +985,7 @@ namespace Oculus.Avatar2
 #pragma warning restore 618
         }
 
-        [ObsoleteAttribute("DidRender is obsolete.", false)]
+        [Obsolete("DidRender is obsolete.", false)]
         protected virtual void DidRender() { }
 
         /**
@@ -768,7 +1018,7 @@ namespace Oculus.Avatar2
             if (hasManagerInstance)
             {
                 OvrAvatarManager.Instance.RemoveLoadRequests(this);
-                if (IsLoading)
+                if (IsApplyingModels)
                 {
                     OvrAvatarManager.Instance.RemoveQueuedLoad(this);
                 }
@@ -796,6 +1046,7 @@ namespace Oculus.Avatar2
 #pragma warning disable 618
             LoadState = LoadingState.NotCreated;
 #pragma warning restore 618
+            IsApplyingModels = false;
             CurrentState = AvatarState.None;
 
             ResetLODRange();
@@ -803,7 +1054,7 @@ namespace Oculus.Avatar2
 
             ShutdownAvatarLOD();
 
-            // TODO: These will get destoryed w/ LODObjects - though being explicit would be nice
+            // TODO: These will get destroyed w/ LODObjects - though being explicit would be nice
             // This trips an error in Unity currently,
             /* "Can't destroy Transform component of 'S0_L2_M1_V1_optimized_geom,0'.
              * If you want to destroy the game object, please call 'Destroy' on the game object instead.
@@ -831,92 +1082,6 @@ namespace Oculus.Avatar2
 
         #region Asset Loading Requests
 
-        // TODO: Rename? This is also how you load assets from cdn if it can't find it from a zip source
-        /**
-         * Load avatar assets from a Zip file from Unity streaming assets.
-         * This function loads all levels of detail.
-         * @param string[]   array of strings containing asset directories to search.
-         * @see LoadAssetsFromData
-         * @see LoadAssetsFromStreamingAssets
-         */
-        protected void LoadAssetsFromZipSource(string[] assetPaths)
-        {
-            LoadAssetsFromZipSource(assetPaths, CAPI.ovrAvatar2EntityLODFlags.All);
-        }
-
-        /**
-         * Load avatar assets from a Zip file from Unity streaming assets.
-         * @param string[]   array of strings containing asset directories to search.
-         * @param lodFilter  level of detail(s) to load.
-         * @see LoadAssetsFromData
-         * @see LoadAssetsFromStreamingAssets
-         * @see CAPI.ovrAvatar2EntityLODFlags
-         */
-        protected void LoadAssetsFromZipSource(string[] assetPaths, CAPI.ovrAvatar2EntityLODFlags lodFilter)
-        {
-            if (!IsCreated)
-            {
-                OvrAvatarLog.LogError("Cannot load assets before entity has been created.", logScope, this);
-                return;
-            }
-
-
-            bool didLoadZipAsset = false;
-            foreach (var path in assetPaths)
-            {
-                CAPI.ovrAvatar2Result result = CAPI.OvrAvatarEntity_LoadUriWithLODFilter(entityId, $"zip://{path}", lodFilter, out var loadRequestId);
-                if (result.IsSuccess())
-                {
-                    didLoadZipAsset = true;
-                    OvrAvatarManager.Instance.RegisterLoadRequest(this, loadRequestId);
-                }
-                else
-                {
-                    OvrAvatarLog.LogError($"Failed to load asset. {result} at path: {path}", logScope, this);
-                }
-            }
-
-            OvrAvatarLog.Assert(didLoadZipAsset);
-            IsPendingZipAvatar = didLoadZipAsset;
-            if (didLoadZipAsset)
-            {
-                ClearFailedLoadState();
-            }
-        }
-
-        /**
-        * Load avatar assets from Unity streaming assets.
-        * @param string[]   array of strings containing asset directories
-        *                   to search relative to *Application.streamingAssetsPath*.
-        * @see LoadAssetsFromData
-        * @see LoadAssetsFromZipSource
-        */
-        protected void LoadAssetsFromStreamingAssets(string[] assetPaths)
-        {
-            if (!IsCreated)
-            {
-                OvrAvatarLog.LogError("Cannot load assets before entity has been created.", logScope, this);
-                return;
-            }
-
-            string prefix = $"file://{Application.streamingAssetsPath}/";
-            foreach (var path in assetPaths)
-            {
-                CAPI.ovrAvatar2Result result = CAPI.OvrAvatarEntity_LoadUri(entityId, prefix + path, out var loadRequestId);
-                if (result.IsSuccess())
-                {
-                    ClearFailedLoadState();
-                    OvrAvatarManager.Instance.RegisterLoadRequest(this, loadRequestId);
-                }
-                else
-                {
-                    OvrAvatarLog.LogError(
-                        $"Failed to load asset from streaming assets. {result} at path: {prefix + path}"
-                        , logScope, this);
-                }
-            }
-        }
-
         /**
          * Load avatar assets from a block of data.
          * @param data         C++ pointer to asset data.
@@ -932,7 +1097,7 @@ namespace Oculus.Avatar2
                 return;
             }
 
-            CAPI.ovrAvatar2Result result = CAPI.OvrAvatarEntity_LoadMemory(entityId, data, size, callbackName, out var loadRequestId);
+            CAPI.ovrAvatar2Result result = CAPI.OvrAvatarEntity_LoadMemoryWithFilters(entityId, data, size, callbackName, _creationInfo.renderFilters, out var loadRequestId);
             if (result.IsSuccess())
             {
                 ClearFailedLoadState();
@@ -984,7 +1149,6 @@ namespace Oculus.Avatar2
          */
         protected void SetActiveView(CAPI.ovrAvatar2EntityViewFlags view)
         {
-
             var result = CAPI.ovrAvatar2Entity_SetViewFlags(entityId, _hidden ? CAPI.ovrAvatar2EntityViewFlags.None : view);
             if (result.IsSuccess())
             {
@@ -1014,14 +1178,138 @@ namespace Oculus.Avatar2
          */
         protected void SetActiveManifestation(CAPI.ovrAvatar2EntityManifestationFlags manifestation)
         {
-            var result = CAPI.ovrAvatar2Entity_SetManifestationFlags(entityId, manifestation);
-            if (result.IsSuccess())
+            if (IsCreated)
             {
-                _activeManifestation = manifestation;
+                var result = CAPI.ovrAvatar2Entity_SetManifestationFlags(entityId, manifestation);
+                if (result.IsSuccess())
+                {
+                    _activeManifestation = manifestation;
+                }
+                else
+                {
+                    OvrAvatarLog.LogError($"SetManifestationFlags Failed: {result}");
+                }
             }
             else
             {
-                OvrAvatarLog.LogError($"SetManifestationFlags Failed: {result}");
+                _activeManifestation = manifestation;
+            }
+        }
+
+        protected void SetActiveSubMeshInclusion(CAPI.ovrAvatar2EntitySubMeshInclusionFlags subMeshInclusion)
+        {
+            var result = CAPI.ovrAvatar2Entity_SetSubMeshInclusionFlags(entityId, subMeshInclusion);
+            if (!result.EnsureSuccess("ovrAvatar2Entity_SetSubMeshInclusionFlags", logScope, this))
+            {
+                _activeSubMeshes = subMeshInclusion;
+
+                // TODO: change this to a class member with a mx number of meshes
+                List<UnityEngine.Rendering.SubMeshDescriptor> subMeshDescriptors = new List<UnityEngine.Rendering.SubMeshDescriptor>(64);
+                foreach (PrimitiveRenderData[] renderDatas in _visiblePrimitiveRenderers)
+                {
+                    foreach (PrimitiveRenderData renderData in renderDatas)
+                    {
+                        OvrAvatarRenderable renderable = renderData.renderable;
+                        MeshRenderer renderer = renderable.rendererComponent as MeshRenderer;
+                        if (renderer != null)
+                        {
+                            MeshFilter filter = renderer.GetComponent<MeshFilter>();
+                            Mesh mesh = filter.sharedMesh;
+#if SUBMESH_DEBUGGING
+                            OvrAvatarLog.LogInfo("BEFORE MeshInfo: " + mesh.triangles.Length + " triangles, " + mesh.subMeshCount + " submesh count", logScope);
+                            for (int i = 0; i < mesh.subMeshCount; i++) {
+                                UnityEngine.Rendering.SubMeshDescriptor desc = mesh.GetSubMesh(i);
+                                OvrAvatarLog.LogInfo("BEFORE SubMeshInfo[" + i + "]: " + desc.indexStart + ", " + desc.indexCount, logScope);
+                            }
+#endif
+                            int originalNumberIndices = renderable.originalNumberIndices;
+                            UInt16[] originalIndexBuffer = renderable.originalIndexBuffer;
+                            if (originalNumberIndices <= 0 && mesh.triangles.Length > 0)
+                            {
+                                renderable.originalNumberIndices = mesh.triangles.Length;
+                                renderable.originalIndexBuffer = Array.ConvertAll(mesh.triangles, item => (UInt16)item);
+
+                                originalNumberIndices = renderable.originalNumberIndices;
+                                originalIndexBuffer = renderable.originalIndexBuffer;
+                            }
+
+                            if (originalNumberIndices <= 0)
+                            {
+                                // we can't continue at this point, it may be indicative that the model is still loading/unloaded
+                            }
+                            else if ((subMeshInclusion & CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All) == CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All)
+                            {
+                                int unitySubMeshIndex = 0;
+                                UnityEngine.Rendering.SubMeshDescriptor desc = new UnityEngine.Rendering.SubMeshDescriptor(0, originalNumberIndices);
+                                mesh.SetIndexBufferParams(originalNumberIndices, UnityEngine.Rendering.IndexFormat.UInt16);
+                                mesh.SetIndexBufferData<UInt16>(originalIndexBuffer, 0, 0, originalNumberIndices);
+                                mesh.subMeshCount = 1;
+                                mesh.SetTriangles(originalIndexBuffer, unitySubMeshIndex);
+                                mesh.SetSubMesh(unitySubMeshIndex, desc);
+                            }
+                            else
+                            {
+                                // each primitive has it's own submeshes so do a for loop on the subMeshes
+                                uint avatarSdkSubMeshCount = 0;
+                                var countResult = CAPI.ovrAvatar2Primitive_GetSubMeshCount(renderData.primitiveId, out avatarSdkSubMeshCount);
+                                if (countResult.IsSuccess())
+                                {
+                                    unsafe
+                                    {
+                                        int totalSubMeshBufferSize = 0;
+
+                                        for (uint subMeshIndex = 0; subMeshIndex < avatarSdkSubMeshCount; subMeshIndex++)
+                                        {
+
+                                            CAPI.ovrAvatar2PrimitiveSubmesh subMesh;
+                                            var subMeshResult = CAPI.ovrAvatar2Primitive_GetSubMeshByIndex(renderData.primitiveId, subMeshIndex, out subMesh);
+                                            if (subMeshResult.IsSuccess())
+                                            {
+                                                CAPI.ovrAvatar2EntitySubMeshInclusionFlags localInclusionFlags = subMesh.inclusionFlags;
+                                                if (!(localInclusionFlags == CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All && !_activeSubMeshesIncludeUntyped) && (localInclusionFlags & subMeshInclusion) != 0)
+                                                {
+                                                    UnityEngine.Rendering.SubMeshDescriptor desc = new UnityEngine.Rendering.SubMeshDescriptor((int)subMesh.indexStart, (int)subMesh.indexCount);
+                                                    subMeshDescriptors.Add(desc);
+                                                    totalSubMeshBufferSize += desc.indexCount;
+                                                }
+                                            }
+                                        }
+
+                                        mesh.SetIndexBufferParams(originalNumberIndices, UnityEngine.Rendering.IndexFormat.UInt16);
+                                        UInt16[] indexBufferCopy;
+                                        {
+                                            indexBufferCopy = new UInt16[totalSubMeshBufferSize];
+                                            // Workaround because Sub Mesh API is not working as planned...
+                                            int subMeshDestination = 0;
+                                            for (int unitySubMeshIndex = 0; unitySubMeshIndex < subMeshDescriptors.Count; unitySubMeshIndex++)
+                                            {
+                                                var desc = subMeshDescriptors[unitySubMeshIndex];
+                                                for (int indexNumber = desc.indexStart; indexNumber < desc.indexCount + desc.indexStart; indexNumber++)
+                                                {
+                                                    indexBufferCopy[subMeshDestination] = renderable.originalIndexBuffer[indexNumber];
+                                                    subMeshDestination++;
+                                                }
+                                            }
+                                        }
+                                        subMeshDescriptors.Clear();
+
+                                        mesh.subMeshCount = 1;
+                                        mesh.SetIndexBufferData<UInt16>(indexBufferCopy, 0, 0, totalSubMeshBufferSize);
+                                        mesh.SetTriangles(indexBufferCopy, 0);
+                                    }
+                                }
+                            }
+#if SUBMESH_DEBUGGING
+                            OvrAvatarLog.LogInfo("AFTER MeshInfo: " + mesh.triangles.Length + " triangles, " + mesh.subMeshCount + " submesh count", logScope);
+                            for (int i = 0; i < mesh.subMeshCount; i++)
+                            {
+                                UnityEngine.Rendering.SubMeshDescriptor desc = mesh.GetSubMesh(i);
+                                OvrAvatarLog.LogInfo("AFTER SubMeshInfo[" + i + "]: " + desc.indexStart + ", " + desc.indexCount, logScope);
+                            }
+#endif
+                        }
+                    }
+                }
             }
         }
 
@@ -1116,6 +1404,20 @@ namespace Oculus.Avatar2
             return tx;
         }
 
+        public bool GetMonitoredPositionAndOrientation(CAPI.ovrAvatar2JointType jointType, out Vector3 position
+            , out Quaternion orientation)
+        {
+            Debug.Assert(_jointMonitor != null);
+            if (_jointMonitor != null &&
+                _jointMonitor.TryGetPositionAndOrientation(jointType, out position, out orientation))
+            {
+                return true;
+            }
+            position = Vector3.zero;
+            orientation = Quaternion.identity;
+            return false;
+        }
+
         /**
          * Get the current focal point that the avatar is looking at.
          * @returns 3D vector with gaze position.
@@ -1128,8 +1430,11 @@ namespace Oculus.Avatar2
             {
                 return null;
             }
-
+#if OVR_AVATAR_ENABLE_CLIENT_XFORM
+            return gazePos;
+#else
             return gazePos.ConvertSpace();
+#endif
         }
 
         /**
@@ -1289,10 +1594,33 @@ namespace Oculus.Avatar2
             _bodyTracking = bodyTrackingBehavior;
             if (IsCreated)
             {
-                SetBodyTracking(_bodyTracking == null ? null : _bodyTracking.TrackingContext);
+                SetBodyTrackingContext(_bodyTracking?.TrackingContext);
             }
         }
 
+        /**
+         * Select the face pose to use for this avatar.
+         */
+        public void SetFacePoseProvider(OvrAvatarFacePoseBehavior facePoseBehavior)
+        {
+            _facePoseBehavior = facePoseBehavior;
+            if (IsCreated)
+            {
+                SetFacePoseProvider(_facePoseBehavior?.FacePoseProvider);
+            }
+        }
+
+        /**
+         * Select the eye pose to use for this avatar.
+         */
+        public void SetEyePoseProvider(OvrAvatarEyePoseBehavior eyePoseBehavior)
+        {
+            _eyePoseBehavior = eyePoseBehavior;
+            if (IsCreated)
+            {
+                SetEyePoseProvider(_eyePoseBehavior?.EyePoseProvider);
+            }
+        }
 
         /**
          * Select the lip sync behavior to use for this avatar.
@@ -1310,54 +1638,75 @@ namespace Oculus.Avatar2
             _lipSync = lipSyncBehavior;
             if (IsCreated)
             {
-                SetLipSync(_lipSync == null ? null : _lipSync.LipSyncContext);
+                SetLipSyncContext(_lipSync != null ? _lipSync.LipSyncContext : null);
             }
         }
 
-        private void SetBodyTracking(OvrAvatarBodyTrackingContextBase newContext)
+        private void SetBodyTrackingContext(OvrAvatarBodyTrackingContextBase newContext)
         {
             // Special case to reduce overhead
             if (newContext is IOvrAvatarNativeBodyTracking bodyTracking)
             {
                 var nativeContext = bodyTracking.NativeDataContext;
-                var result2 = CAPI.ovrAvatar2Tracking_SetBodyTrackingContextNative(entityId, ref nativeContext);
-                if (result2 != CAPI.ovrAvatar2Result.Success)
-                {
-                    OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetBodyTrackingContextNative failed with {result2}");
-                }
+                CAPI.ovrAvatar2Tracking_SetBodyTrackingContextNative(entityId, in nativeContext)
+                    .EnsureSuccess("ovrAvatar2Tracking_SetBodyTrackingContextNative", logScope, this);
             }
             else
             {
                 var dataContext = newContext?.DataContext ?? new CAPI.ovrAvatar2TrackingDataContext();
-                var result = CAPI.ovrAvatar2Tracking_SetBodyTrackingContext(entityId, ref dataContext);
-                if (result != CAPI.ovrAvatar2Result.Success)
-                {
-                    OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetBodyTrackingContext failed with {result}");
-                }
+                CAPI.ovrAvatar2Tracking_SetBodyTrackingContext(entityId, in dataContext)
+                    .EnsureSuccess("ovrAvatar2Tracking_SetBodyTrackingContext", logScope, this);
             }
         }
 
+        private void SetFacePoseProvider(OvrAvatarFacePoseProviderBase newProvider)
+        {
+            // Special case to reduce overhead
+            if (newProvider is IOvrAvatarNativeFacePose facePose)
+            {
+                var nativeProvider = facePose.NativeProvider;
+                CAPI.ovrAvatar2Input_SetFacePoseProviderNative(entityId, in nativeProvider)
+                    .EnsureSuccess("ovrAvatar2Input_SetFacePoseProviderNative", logScope, this);
+            }
+            else
+            {
+                var dataContext = newProvider?.Provider ?? new CAPI.ovrAvatar2FacePoseProvider();
+                CAPI.ovrAvatar2Input_SetFacePoseProvider(entityId, in dataContext)
+                    .EnsureSuccess("ovrAvatar2Input_SetFacePoseProvider", logScope, this);
+            }
+        }
 
-        private void SetLipSync(OvrAvatarLipSyncContextBase newContext)
+        private void SetEyePoseProvider(OvrAvatarEyePoseProviderBase newProvider)
+        {
+            // Special case to reduce overhead
+            if (newProvider is IOvrAvatarNativeEyePose eyePose)
+            {
+                var nativeProvider = eyePose.NativeProvider;
+                CAPI.ovrAvatar2Input_SetEyePoseProviderNative(entityId, in nativeProvider)
+                    .EnsureSuccess("ovrAvatar2Input_SetEyePoseProviderNative", logScope, this);
+            }
+            else
+            {
+                var dataContext = newProvider?.Context ?? new CAPI.ovrAvatar2EyePoseProvider();
+                CAPI.ovrAvatar2Input_SetEyePoseProvider(entityId, in dataContext)
+                    .EnsureSuccess("ovrAvatar2Input_SetEyePoseProvider", logScope, this);
+            }
+        }
+
+        private void SetLipSyncContext(OvrAvatarLipSyncContextBase newContext)
         {
             // Special case to reduce overhead
             if (newContext is OvrAvatarVisemeContext visemeContext)
             {
                 var ncb = visemeContext.NativeCallbacks;
-                var result2 = CAPI.ovrAvatar2Tracking_SetLipSyncContextNative(entityId, ref ncb);
-                if (result2 != CAPI.ovrAvatar2Result.Success)
-                {
-                    OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetLipSyncContext failed with {result2}");
-                }
+                CAPI.ovrAvatar2Tracking_SetLipSyncContextNative(entityId, in ncb)
+                    .EnsureSuccess("ovrAvatar2Tracking_SetLipSyncContextNative", logScope, this);
             }
             else
             {
                 var dataContext = newContext?.DataContext ?? new CAPI.ovrAvatar2LipSyncContext();
-                var result = CAPI.ovrAvatar2Tracking_SetLipSyncContext(entityId, ref dataContext);
-                if (result != CAPI.ovrAvatar2Result.Success)
-                {
-                    OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetLipSyncContext failed with {result}");
-                }
+                CAPI.ovrAvatar2Tracking_SetLipSyncContext(entityId, in dataContext)
+                    .EnsureSuccess("ovrAvatar2Tracking_SetLipSyncContext", logScope, this);
             }
         }
 

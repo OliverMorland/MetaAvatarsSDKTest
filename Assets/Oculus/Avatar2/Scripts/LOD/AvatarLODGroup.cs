@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 
@@ -35,7 +36,7 @@ namespace Oculus.Avatar2 {
       }
     }
 
-    public virtual void Start() {
+    protected virtual void Start() {
     }
     /*
     public virtual void Update() {
@@ -43,7 +44,7 @@ namespace Oculus.Avatar2 {
     }
     */
 
-    void OnDestroy() {
+    protected virtual void OnDestroy() {
       Dispose();
     }
 
@@ -68,5 +69,7 @@ namespace Oculus.Avatar2 {
       prevLevel_ = Level;
       prevAdjustedLevel_ = adjustedLevel_;
     }
+
+    internal virtual byte LevelsWithAnimationUpdateCost => (byte) (1 << Level);
   }
 }

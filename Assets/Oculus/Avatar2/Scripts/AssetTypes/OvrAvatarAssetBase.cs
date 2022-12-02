@@ -88,6 +88,7 @@ namespace Oculus.Avatar2
         public void CancelLoad()
         {
             isCancelled = true;
+            isLoaded = false;
             _ExecuteCancel();
         }
 

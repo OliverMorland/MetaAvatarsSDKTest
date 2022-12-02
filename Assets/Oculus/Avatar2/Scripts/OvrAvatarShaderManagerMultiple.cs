@@ -1,4 +1,3 @@
-using System;
 
 using UnityEngine;
 
@@ -20,15 +19,26 @@ namespace Oculus.Avatar2
         protected OvrAvatarShaderConfiguration[] _configurations = null;
 
         // The following requires maintenance but is an easy alternative to creating a custom Unity editor for this manager
-        [SerializeField] protected OvrAvatarShaderConfiguration DefaultShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration ArrayShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration SolidColorShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration TransparentShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration EmmisiveShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration SkinShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration LeftEyeShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration RightEyeShaderConfigurationInitializer;
-        [SerializeField] protected OvrAvatarShaderConfiguration HairShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration DefaultShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration ArrayShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration SolidColorShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration TransparentShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration EmmisiveShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration SkinShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration LeftEyeShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration RightEyeShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration HairShaderConfigurationInitializer;
+        [SerializeField]
+        protected OvrAvatarShaderConfiguration FastLoadConfigurationInitializer;
 
         public override OvrAvatarShaderConfiguration GetConfiguration(ShaderType type)
         {
@@ -67,7 +77,8 @@ namespace Oculus.Avatar2
                 null == SkinShaderConfigurationInitializer &&
                 null == LeftEyeShaderConfigurationInitializer &&
                 null == RightEyeShaderConfigurationInitializer &&
-                null == HairShaderConfigurationInitializer)
+                null == HairShaderConfigurationInitializer &&
+                null == FastLoadConfigurationInitializer)
             {
                 return;
             }
@@ -82,6 +93,7 @@ namespace Oculus.Avatar2
             _configurations[(int)ShaderType.LeftEye] = LeftEyeShaderConfigurationInitializer;
             _configurations[(int)ShaderType.RightEye] = RightEyeShaderConfigurationInitializer;
             _configurations[(int)ShaderType.Hair] = HairShaderConfigurationInitializer;
+            _configurations[(int)ShaderType.FastLoad] = FastLoadConfigurationInitializer;
         }
 
         public override bool AutoGenerateShaderConfigurations()

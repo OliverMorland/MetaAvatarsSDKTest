@@ -21,9 +21,11 @@
 #define OVR_VERTEX_VERT_ID_FIELD_NAME v_Id
 #define OVR_VERTEX_TEXCOORD_FIELD_NAME v_UVCoord1
 #define OVR_VERTEX_COLOR_FIELD_NAME v_Color
-#include "../AvatarCustomTypes.cginc"
+#define OVR_VERTEX_ORMT_FIELD_NAME v_ORMT
+#include "UnityCG.cginc"
+#include "../../../../Scripts/ShaderUtils/AvatarCustomTypes.cginc"
 
-#include "../AvatarCustom.cginc"
+#include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
 // This includes the required macros for shadow and attenuation values.
 #include "AutoLight.cginc"
@@ -34,17 +36,15 @@
 // Composite v2f structure derived from the original Khronos cginc files.
 struct v2f
 {
-#ifdef HAS_VERTEX_COLOR_float3
-    float3 v_Color : COLOR;
-#endif
-#ifdef HAS_VERTEX_COLOR_float4
     float4 v_Color : COLOR;
-#endif
+ #ifdef MATERIAL_MODE_VERTEX
+    float4 v_ORMT : TEXCOORD1; // holds ormt vertex color channel
+ #endif
 
     float4 v_Position : SV_POSITION;
 
     float2 v_UVCoord1 : TEXCOORD0;
-    float2 v_UVCoord2 : TEXCOORD1;    // always define this to simplify functions
+    float2 v_UVCoord2 : TEXCOORD11;    // always define this to simplify functions
 
 #ifdef HAS_NORMALS
 #ifdef HAS_TANGENTS
@@ -106,11 +106,11 @@ v2f vert(OvrDefaultAppdata v) {
     o.v_UVCoord2 = o.v_UVCoord1;
 #endif
 
-#ifdef HAS_VERTEX_COLOR_float3
-    o.v_Color = v.v_Color;
-#endif
-#ifdef HAS_VERTEX_COLOR_float4
-    o.v_Color = v.v_Color;
+#ifdef MATERIAL_MODE_VERTEX
+    o.v_ORMT = OVR_GET_VERTEX_ORMT(v);
+    o.v_Color = OVR_GET_VERTEX_COLOR(v);
+#else
+    o.v_Color.a = OVR_GET_VERTEX_COLOR(v).a;
 #endif
 
 #ifdef HAS_NORMALS

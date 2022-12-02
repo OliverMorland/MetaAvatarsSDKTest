@@ -28,7 +28,7 @@ namespace Oculus.Avatar2
 
         public static ELogLevel logLevel = ELogLevel.Info;
 
-        public delegate void LogDelegate(ELogLevel level, string msg);
+        public delegate void LogDelegate(ELogLevel level, string scope, string msg);
 
         public static event LogDelegate CustomLogger;
 
@@ -84,18 +84,23 @@ namespace Oculus.Avatar2
             }
         }
 
+        private static string GetScopePrefix(string scope)
+        {
+            return String.IsNullOrEmpty(scope) ? "[ovrAvatar2]" : $"[ovrAvatar2 {scope}]";
+        }
+
 #if OVRAVATAR_LOG_ENABLE_CONDITIONAL
         [Conditional(OVRAVATAR_LOG_FORCE_ENABLE)]
 #endif
         public static void Log(ELogLevel level, string msg, string scope = "", UnityEngine.Object context = null)
         {
-            string prefix = String.IsNullOrEmpty(scope) ? "[ovrAvatar2]" : $"[ovrAvatar2 {scope}]";
             if (CustomLogger != null)
             {
-                CustomLogger(level, $"{prefix} {msg}");
+                CustomLogger(level, scope, msg);
             }
             else if (level >= logLevel)
             {
+                string prefix = GetScopePrefix(scope);
                 if (level >= ELogLevel.Error)
                 {
                     Debug.LogError($"{prefix} {msg}", context);
@@ -119,8 +124,10 @@ namespace Oculus.Avatar2
             }
         }
 
-#if OVRAVATAR_LOG_ENABLE_CONDITIONAL
         [Conditional(OVRAVATAR_LOG_FORCE_ENABLE)]
+#if !OVRAVATAR_LOG_ENABLE_CONDITIONAL
+         [Conditional("DEVELOPMENT_BUILD")
+         , Conditional("UNITY_EDITOR")]
 #endif
         public static void LogVerbose(string msg, string scope = "", UnityEngine.Object context = null)
         {

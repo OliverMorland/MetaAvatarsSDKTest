@@ -28,7 +28,8 @@ namespace Oculus.Avatar2
         private const float bufferSizeRatio = 0.4f;
 
         [Header("Audio Settings")]
-        [SerializeField] private LipSyncAudioSourceType _audioSourceType = LipSyncAudioSourceType.AudioSource;
+        [SerializeField]
+        protected LipSyncAudioSourceType _audioSourceType = LipSyncAudioSourceType.AudioSource;
 
         /**
          * Enables or disables audio capture.
@@ -38,14 +39,17 @@ namespace Oculus.Avatar2
         [FormerlySerializedAs("_captureAudio")]
         public bool CaptureAudio = true;
 
-        [SerializeField] private CAPI.ovrAvatar2LipSyncMode _mode = CAPI.ovrAvatar2LipSyncMode.Original;
+        [SerializeField]
+        private CAPI.ovrAvatar2LipSyncMode _mode = CAPI.ovrAvatar2LipSyncMode.Original;
 
         [Range(0.0f, 100.0f)]
-        [SerializeField] private int _smoothing;
+        [SerializeField]
+        private int _smoothing;
 
-        [SerializeField] private int _audioSampleRate = 48000;
+        [SerializeField]
+        private int _audioSampleRate = 48000;
 
-        private OvrAvatarVisemeContext _visemeContext;
+        protected OvrAvatarVisemeContext _visemeContext;
 
         /**
          * Controls the rate at which audio is sampled.
@@ -91,7 +95,7 @@ namespace Oculus.Avatar2
         }
 
         // Thread-safe check of this.enabled
-        private bool _active;
+        protected bool _active;
 
         // Core Unity Functions
 
@@ -100,7 +104,7 @@ namespace Oculus.Avatar2
             SetAudioSourceType(_audioSourceType);
         }
 
-        private void OnAudioFilterRead(float[] data, int channels)
+        protected virtual void OnAudioFilterRead(float[] data, int channels)
         {
             if (_audioSourceType == LipSyncAudioSourceType.AudioSource)
             {
@@ -160,7 +164,7 @@ namespace Oculus.Avatar2
             }
         }
 
-        public void ProcessAudioSamples(float[] data, int channels)
+        public virtual void ProcessAudioSamples(float[] data, int channels)
         {
             if (!_active || !OvrAvatarManager.initialized) return;
 
@@ -173,7 +177,7 @@ namespace Oculus.Avatar2
             }
         }
 
-        public void ProcessAudioSamples(short[] data, int channels)
+        public virtual void ProcessAudioSamples(short[] data, int channels)
         {
             if (!_active || !OvrAvatarManager.initialized) return;
 

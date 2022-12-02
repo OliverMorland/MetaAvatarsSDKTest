@@ -1,7 +1,13 @@
+#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS && !OVRPLUGIN_UNSUPPORTED_PLATFORM
+#define USING_XR_SDK
+#endif
+
 using Oculus.Avatar2;
 
+#if USING_XR_SDK
 using Button = OVRInput.Button;
 using Touch = OVRInput.Touch;
+#endif
 
 public class SampleInputControlDelegate : OvrAvatarInputControlDelegate
 {
@@ -10,12 +16,15 @@ public class SampleInputControlDelegate : OvrAvatarInputControlDelegate
         inputControlState = new OvrAvatarInputControlState();
         inputControlState.type = GetControllerType();
 
+#if USING_XR_SDK
         UpdateControllerInput(ref inputControlState.leftControllerState, OVRInput.Controller.LTouch);
         UpdateControllerInput(ref inputControlState.rightControllerState, OVRInput.Controller.RTouch);
+#endif
 
         return true;
     }
 
+#if USING_XR_SDK
     private void UpdateControllerInput(ref OvrAvatarControllerState controllerState, OVRInput.Controller controller)
     {
         controllerState.buttonMask = 0;
@@ -80,4 +89,6 @@ public class SampleInputControlDelegate : OvrAvatarInputControlDelegate
             controllerState.touchMask |= CAPI.ovrAvatar2Touch.ThumbUp;
         }
     }
+#endif
+
 }

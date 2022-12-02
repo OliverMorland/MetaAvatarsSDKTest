@@ -67,23 +67,20 @@ public static class AvatarEditorDeeplink
 #else
         string deeplinkUri = $"/?version=V2&returnUrl=apk://{Application.identifier}";
 
-        using (AndroidJavaClass activityClass = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-        using (AndroidJavaObject currentActivity = activityClass.GetStatic<AndroidJavaObject>("currentActivity"))
-        using (AndroidJavaObject packageManager = currentActivity.Call<AndroidJavaObject>("getPackageManager"))
-        {
-            AndroidJavaObject intent = packageManager.Call<AndroidJavaObject>(
-                "getLaunchIntentForPackage",
-                "com.oculus.vrshell"
-            );
-            
-            intent.Call<AndroidJavaObject>("putExtra", "intent_data", "systemux://avatareditor");
-            intent.Call<AndroidJavaObject>("putExtra", "uri", deeplinkUri);
+        AndroidJavaObject activityClass = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+        AndroidJavaObject currentActivity = activityClass.GetStatic<AndroidJavaObject>("currentActivity");
+        var intent = new AndroidJavaObject("android.content.Intent");
 
-            currentActivity.Call("startActivity", intent);
-        }
+        intent.Call<AndroidJavaObject>("setPackage", "com.oculus.vrshell");
+        intent.Call<AndroidJavaObject>("setAction", "com.oculus.vrshell.intent.action.LAUNCH");
+        intent.Call<AndroidJavaObject>("putExtra", "intent_data", "systemux://avatareditor");
+        intent.Call<AndroidJavaObject>("putExtra", "uri", deeplinkUri);
+
+        // Broadcast instead of starting activity, so that it goes to overlay
+        currentActivity.Call("sendBroadcast", intent);
 #endif
     }
-    
+
     // TODO: We've had to copy this code for a number of dlls now. Make a generic class to handle this case?
     private enum LoadLibraryResult : Int32
     {

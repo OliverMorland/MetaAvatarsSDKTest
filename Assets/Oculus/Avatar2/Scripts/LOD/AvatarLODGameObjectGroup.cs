@@ -4,6 +4,8 @@ using UnityEngine;
 
 namespace Oculus.Avatar2 {
   public class AvatarLODGameObjectGroup : AvatarLODGroup {
+    private const string logScope = "AvatarLODGameObjectGroup";
+
     [SerializeField]
     private GameObject[] gameObjects_ = Array.Empty<GameObject>();
 
@@ -28,10 +30,29 @@ namespace Oculus.Avatar2 {
     }
 
     public override void UpdateLODGroup() {
-      if (prevAdjustedLevel_ != -1)
-        GameObjects[prevAdjustedLevel_]?.SetActive(false);
-      if (adjustedLevel_ != -1)
-        GameObjects[adjustedLevel_].SetActive(true);
+      if (prevAdjustedLevel_ >= 0)
+      {
+        if (prevAdjustedLevel_ < GameObjects.Length)
+        {
+          GameObjects[prevAdjustedLevel_]?.SetActive(false);
+        }
+        else
+        {
+          OvrAvatarLog.LogWarning("prevAdjustedLevel outside bounds of GameObjects array", logScope, this);
+        }
+      }
+
+      if (adjustedLevel_ >= 0)
+      {
+        if (adjustedLevel_ < GameObjects.Length)
+        {
+          GameObjects[adjustedLevel_].SetActive(true);
+        }
+        else
+        {
+          OvrAvatarLog.LogWarning("adjustedLevel outside bounds of GameObjects array", logScope, this);
+        }
+      }
 
       prevLevel_ = Level;
       prevAdjustedLevel_ = adjustedLevel_;

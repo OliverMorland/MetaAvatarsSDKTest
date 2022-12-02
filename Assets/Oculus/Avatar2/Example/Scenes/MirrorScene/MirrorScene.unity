@@ -99,7 +99,7 @@ LightmapSettings:
     m_LightProbeSampleCountMultiplier: 4
   m_LightingDataAsset: {fileID: 112000000, guid: f0c68c730be06da4e8d2e671bffde0dc,
     type: 2}
-  m_LightingSettings: {fileID: 541347328}
+  m_LightingSettings: {fileID: 1120315176}
 --- !u!196 &4
 NavMeshSettings:
   serializedVersion: 2
@@ -335,9 +335,14 @@ MonoBehaviour:
       lodFlags: 31
       manifestationFlags: 2
       viewFlags: 3
+      subMeshInclusionFlags: 2047
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 2047
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 2077391344}
+  _facePoseBehavior: {fileID: 1640224949}
+  _eyePoseBehavior: {fileID: 1640224948}
   _lipSync: {fileID: 307099418}
   _criticalJointTypes: 
   _debugDrawing:
@@ -363,6 +368,9 @@ MonoBehaviour:
   OnDefaultAvatarLoadedEvent:
     m_PersistentCalls:
       m_Calls: []
+  OnFastLoadAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   OnUserAvatarLoadedEvent:
     m_PersistentCalls:
       m_Calls: []
@@ -373,19 +381,22 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   SkinningType: 3
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
+  _highQuality: 0
   _loadUserFromCdn: 1
+  _deferLoading: 0
   _assets:
   - source: 0
-    path: 3
-  _assetPostfixDefault: _rift.glb
-  _assetPostfixAndroid: _quest.glb
+    path: 0
+  _underscorePostfix: 1
+  _overridePostfix: 
   _autoCdnRetry: 1
   _autoCheckChanges: 0
   _changeCheckInterval: 8
-  _debugDrawGazePos: 1
+  _debugDrawGazePos: 0
   _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
   _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
@@ -548,67 +559,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 6
   m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
---- !u!850595691 &541347328
-LightingSettings:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: Settings.lighting
-  serializedVersion: 3
-  m_GIWorkflowMode: 1
-  m_EnableBakedLightmaps: 0
-  m_EnableRealtimeLightmaps: 0
-  m_RealtimeEnvironmentLighting: 1
-  m_BounceScale: 1
-  m_AlbedoBoost: 1
-  m_IndirectOutputScale: 1
-  m_UsingShadowmask: 1
-  m_BakeBackend: 1
-  m_LightmapMaxSize: 1024
-  m_BakeResolution: 40
-  m_Padding: 2
-  m_TextureCompression: 1
-  m_AO: 0
-  m_AOMaxDistance: 1
-  m_CompAOExponent: 1
-  m_CompAOExponentDirect: 0
-  m_ExtractAO: 0
-  m_MixedBakeMode: 2
-  m_LightmapsBakeMode: 1
-  m_FilterMode: 1
-  m_LightmapParameters: {fileID: 15204, guid: 0000000000000000f000000000000000, type: 0}
-  m_ExportTrainingData: 0
-  m_TrainingDataDestination: TrainingData
-  m_RealtimeResolution: 2
-  m_ForceWhiteAlbedo: 0
-  m_ForceUpdates: 0
-  m_FinalGather: 0
-  m_FinalGatherRayCount: 256
-  m_FinalGatherFiltering: 1
-  m_PVRCulling: 1
-  m_PVRSampling: 1
-  m_PVRDirectSampleCount: 32
-  m_PVRSampleCount: 500
-  m_PVREnvironmentSampleCount: 500
-  m_PVREnvironmentReferencePointCount: 2048
-  m_LightProbeSampleCountMultiplier: 4
-  m_PVRBounces: 2
-  m_PVRMinBounces: 2
-  m_PVREnvironmentMIS: 0
-  m_PVRFilteringMode: 2
-  m_PVRDenoiserTypeDirect: 0
-  m_PVRDenoiserTypeIndirect: 0
-  m_PVRDenoiserTypeAO: 0
-  m_PVRFilterTypeDirect: 0
-  m_PVRFilterTypeIndirect: 0
-  m_PVRFilterTypeAO: 0
-  m_PVRFilteringGaussRadiusDirect: 1
-  m_PVRFilteringGaussRadiusIndirect: 5
-  m_PVRFilteringGaussRadiusAO: 2
-  m_PVRFilteringAtrousPositionSigmaDirect: 0.5
-  m_PVRFilteringAtrousPositionSigmaIndirect: 2
-  m_PVRFilteringAtrousPositionSigmaAO: 1
 --- !u!1 &625919962
 GameObject:
   m_ObjectHideFlags: 0
@@ -836,49 +786,97 @@ MonoBehaviour:
   m_TrackingType: 0
   m_UpdateType: 0
   m_UseRelativeTransform: 0
---- !u!1 &1638960133
-GameObject:
+--- !u!850595691 &1120315176
+LightingSettings:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1638960135}
-  - component: {fileID: 1638960134}
-  m_Layer: 0
-  m_Name: TestingLoadingAnAvatar
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1638960134
+  m_Name: Settings.lighting
+  serializedVersion: 3
+  m_GIWorkflowMode: 1
+  m_EnableBakedLightmaps: 0
+  m_EnableRealtimeLightmaps: 0
+  m_RealtimeEnvironmentLighting: 1
+  m_BounceScale: 1
+  m_AlbedoBoost: 1
+  m_IndirectOutputScale: 1
+  m_UsingShadowmask: 1
+  m_BakeBackend: 1
+  m_LightmapMaxSize: 1024
+  m_BakeResolution: 40
+  m_Padding: 2
+  m_TextureCompression: 1
+  m_AO: 0
+  m_AOMaxDistance: 1
+  m_CompAOExponent: 1
+  m_CompAOExponentDirect: 0
+  m_ExtractAO: 0
+  m_MixedBakeMode: 2
+  m_LightmapsBakeMode: 1
+  m_FilterMode: 1
+  m_LightmapParameters: {fileID: 15204, guid: 0000000000000000f000000000000000, type: 0}
+  m_ExportTrainingData: 0
+  m_TrainingDataDestination: TrainingData
+  m_RealtimeResolution: 2
+  m_ForceWhiteAlbedo: 0
+  m_ForceUpdates: 0
+  m_FinalGather: 0
+  m_FinalGatherRayCount: 256
+  m_FinalGatherFiltering: 1
+  m_PVRCulling: 1
+  m_PVRSampling: 1
+  m_PVRDirectSampleCount: 32
+  m_PVRSampleCount: 500
+  m_PVREnvironmentSampleCount: 500
+  m_PVREnvironmentReferencePointCount: 2048
+  m_LightProbeSampleCountMultiplier: 4
+  m_PVRBounces: 2
+  m_PVRMinBounces: 2
+  m_PVREnvironmentMIS: 0
+  m_PVRFilteringMode: 2
+  m_PVRDenoiserTypeDirect: 0
+  m_PVRDenoiserTypeIndirect: 0
+  m_PVRDenoiserTypeAO: 0
+  m_PVRFilterTypeDirect: 0
+  m_PVRFilterTypeIndirect: 0
+  m_PVRFilterTypeAO: 0
+  m_PVRFilteringGaussRadiusDirect: 1
+  m_PVRFilteringGaussRadiusIndirect: 5
+  m_PVRFilteringGaussRadiusAO: 2
+  m_PVRFilteringAtrousPositionSigmaDirect: 0.5
+  m_PVRFilteringAtrousPositionSigmaIndirect: 2
+  m_PVRFilteringAtrousPositionSigmaAO: 1
+--- !u!1 &1640224947 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5848076533691757917, guid: d0377a811c2a95841ba015ae0b2c8d45,
+    type: 3}
+  m_PrefabInstance: {fileID: 2104555916}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1640224948
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1638960133}
+  m_GameObject: {fileID: 1640224947}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1c7340928b314b547a52aae5becf0e8e, type: 3}
+  m_Script: {fileID: 11500000, guid: 27d9ca4252a965544a4613f39f18d361, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!4 &1638960135
-Transform:
+--- !u!114 &1640224949
+MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1638960133}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 3.7443361, y: -1.4345927, z: 0.69296646}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_RootOrder: 9
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_GameObject: {fileID: 1640224947}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 852db897867e8a0418e5c20c10cb0cb2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1735107478
 GameObject:
   m_ObjectHideFlags: 0
@@ -986,9 +984,14 @@ MonoBehaviour:
       lodFlags: 31
       manifestationFlags: 2
       viewFlags: 3
-  _activeView: 2
+      subMeshInclusionFlags: 2047
+  _activeView: 1
   _activeManifestation: 2
+  _activeSubMeshes: 2047
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 2077391344}
+  _facePoseBehavior: {fileID: 1640224949}
+  _eyePoseBehavior: {fileID: 1640224948}
   _lipSync: {fileID: 307099418}
   _criticalJointTypes: 0f0000001d00000031000000
   _debugDrawing:
@@ -1014,6 +1017,9 @@ MonoBehaviour:
   OnDefaultAvatarLoadedEvent:
     m_PersistentCalls:
       m_Calls: []
+  OnFastLoadAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   OnUserAvatarLoadedEvent:
     m_PersistentCalls:
       m_Calls: []
@@ -1024,15 +1030,18 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   SkinningType: 3
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
+  _highQuality: 0
   _loadUserFromCdn: 1
+  _deferLoading: 0
   _assets:
   - source: 0
-    path: 8
-  _assetPostfixDefault: _rift.glb
-  _assetPostfixAndroid: _quest.glb
+    path: 0
+  _underscorePostfix: 1
+  _overridePostfix: 
   _autoCdnRetry: 1
   _autoCheckChanges: 0
   _changeCheckInterval: 8
@@ -1061,7 +1070,7 @@ MonoBehaviour:
     type: 3}
   m_PrefabInstance: {fileID: 2104555916}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
+  m_GameObject: {fileID: 1640224947}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6937544d08e2ba34da6ff4ab90cbfd84, type: 3}
@@ -1074,16 +1083,6 @@ PrefabInstance:
   m_Modification:
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 1380493079818413260, guid: d0377a811c2a95841ba015ae0b2c8d45,
-        type: 3}
-      propertyPath: screenPercentToUpdateImportanceCurvePower
-      value: 0.25
-      objectReference: {fileID: 0}
-    - target: {fileID: 1380493079818413260, guid: d0377a811c2a95841ba015ae0b2c8d45,
-        type: 3}
-      propertyPath: screenPercentToUpdateImportanceCurveMultiplier
-      value: 1.5
-      objectReference: {fileID: 0}
     - target: {fileID: 5848076533691757917, guid: d0377a811c2a95841ba015ae0b2c8d45,
         type: 3}
       propertyPath: m_Name

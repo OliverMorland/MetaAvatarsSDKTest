@@ -15,25 +15,6 @@ struct AngularInfo
     float3 padding;
 };
 
-#if defined(HAS_VERTEX_COLOR_float3)
-float4 getVertexColor(float3 v_Color) {
-    float4 color = float4(1.0, 1.0, 1.0, 1.0);
-    color.rgb = v_Color;
-    return color;
-}
-#elif defined(HAS_VERTEX_COLOR_float4)
-float4 getVertexColor(float4 v_Color) {
-    float4 color = float4(1.0, 1.0, 1.0, 1.0);
-    color = v_Color;
-    return color;
-}
-#else
-float4 getVertexColor() {
-  float4 color = float4(1.0, 1.0, 1.0, 1.0);
-  return color;
-}
-#endif
-
 // Find the normal for this fragment, pulling either from a predefined normal map
 // or from the interpolated mesh normal and tangent attributes.
 #ifdef HAS_TANGENTS

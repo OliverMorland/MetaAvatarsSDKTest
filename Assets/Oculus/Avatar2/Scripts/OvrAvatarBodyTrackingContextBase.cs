@@ -41,12 +41,14 @@ namespace Oculus.Avatar2
         }
 
         /**
-         * Gets the tracking state from the native tracking implementation.
+         * Callback from Avatar SDK for the application to provide the current
+         * Body Tracking State.
+         *
          * The tracking state includes the position, orientation and scale
          * for the headset and controllers, buttons pressed, the type of
          * Hand tracking desired and whether the avatar is sitting or standing.
-         * Body tracking implementations must override this function to
-         * convert the native tracking state into a form usable by Unity.
+         * Body tracking implementations must override this function to provide
+         * the current Body Tracking state to AvatarSDK each frame.
          * @param bodyState  where to store the generated tracking state.
          * @see OvrAvatarTrackingBodyState
          * @see OvrAvatarTrackingPose
@@ -56,11 +58,17 @@ namespace Oculus.Avatar2
         protected abstract bool GetBodyState(OvrAvatarTrackingBodyState bodyState);
 
         /**
-         * Gets the tracking skeleton description from the native tracking implementation.
-         * The tracking skeleton may be different than the avatar skeleton
-         * (it might have fewer bones).
+         * Callback from Avatar SDK for the application to provide a
+         * description of the skeleton used for Body Tracking, including
+         * a reference pose.
+         *
+         * The tracking skeleton may be different than the avatar skeleton (it
+         * might have a different number of bones) and the pose will be
+         * retargeted within the Avatar SDK animation system.
          * Body tracking implementations must override this function to
-         * convert the native skeleton data into a form usable by Unity.
+         * describe the tracking skeleton to AvatarSDK. It will be called
+         * whenever the skeleton changes (see "skeletonVersion" in
+         * OvrAvatarTrackingBodyState).
          * @param skeleton  where to store the generated skeleton.
          * @see OvrAvatarTrackingPose
          * @see OvrAvatarTrackingSkeleton
@@ -69,10 +77,11 @@ namespace Oculus.Avatar2
         protected abstract bool GetBodySkeleton(ref OvrAvatarTrackingSkeleton skeleton);
 
         /**
-         * Gets the body pose from the native tracking implementation.
-         * Body tracking implementations must override this function to
-         * convert the native pose data into a form usable by Unity.
-         * @param pose  where to store the generated pose.
+         * Callback from Avatar SDK for the application to provide a Body Pose.
+         *
+         * Body tracking implementations must override this function to fill
+         * out the OvrAvatarTrackingPose struct to provide pose data each frame.
+         * @param pose  Where to set the generated pose.
          * @see OvrAvatarTrackingPose
          * @see OvrAvatarTrackingSkeleton
          * @see GetBodySkeleton

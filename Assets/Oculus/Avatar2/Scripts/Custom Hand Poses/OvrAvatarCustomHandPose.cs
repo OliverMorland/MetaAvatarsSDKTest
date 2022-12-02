@@ -2,8 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+
 using UnityEngine;
 
 using HandJointType = OvrAvatarHandJointType.HandJointType;
@@ -57,24 +59,26 @@ namespace Oculus.Avatar2
         private bool _skeletonIsSet = false;
         private bool _initialized = false;
 
+        private bool _entityPreviouslyReady = false;
+
 #if UNITY_EDITOR
-        private void OnValidate()
+        protected virtual void OnValidate()
         {
             _entity = GetComponent<OvrAvatarEntity>();
         }
 #endif
 
-        protected void OnEnable()
+        protected virtual void OnEnable()
         {
             Initialize();
         }
 
-        protected void OnDisable()
+        protected virtual void OnDisable()
         {
             ClearHandPose();
         }
 
-        protected void Update()
+        protected virtual void Update()
         {
             if (setHandPose) { UpdateHandPose(); }
             if (setWristOffset) { UpdateWristOffset(); }
@@ -194,8 +198,17 @@ namespace Oculus.Avatar2
 
         private bool EntityIsReady()
         {
-            return _entity && (_entity.CurrentState == OvrAvatarEntity.AvatarState.DefaultAvatar
-                               || _entity.CurrentState == OvrAvatarEntity.AvatarState.UserAvatar);
+            bool isReady = _entity && (_entity.CurrentState == OvrAvatarEntity.AvatarState.DefaultAvatar
+                                       || _entity.CurrentState == OvrAvatarEntity.AvatarState.FastLoad
+                                       || _entity.CurrentState == OvrAvatarEntity.AvatarState.UserAvatar);
+
+            if (!isReady && _entityPreviouslyReady)
+            {
+                ClearHandPose();
+            }
+
+            _entityPreviouslyReady = isReady;
+            return isReady;
         }
 
         // Take list of joint transforms from hand and convert to native space ovrAvatar2Transforms
@@ -205,19 +218,29 @@ namespace Oculus.Avatar2
                 logscope);
             for (var i = 0; i < joints.Count; i++)
             {
-                CAPI.ovrAvatar2Transform local = joints[i].transform;
-                xforms[i] = local.ConvertSpace();
+                // TODO: Handle `OVR_AVATAR_ENABLE_CLIENT_XFORM` in `ConvertSpace()`?
+#if OVR_AVATAR_ENABLE_CLIENT_XFORM
+                xforms[i] = (CAPI.ovrAvatar2Transform)joints[i].transform;
+#else
+                xforms[i] = joints[i].transform.ConvertSpace();
+#endif
             }
+
         }
 
         // Take list of joint transforms from hand and convert to native space ovrAvatar2Transforms
         private static CAPI.ovrAvatar2Transform[] GetPoseTransforms(List<JointTransform> joints)
         {
             var xforms = new CAPI.ovrAvatar2Transform[joints.Count];
+
             for (var i = 0; i < joints.Count; i++)
             {
-                CAPI.ovrAvatar2Transform local = joints[i].transform;
-                xforms[i] = local.ConvertSpace();
+                // TODO: Handle `OVR_AVATAR_ENABLE_CLIENT_XFORM` in `ConvertSpace()`?
+#if OVR_AVATAR_ENABLE_CLIENT_XFORM
+                xforms[i] = (CAPI.ovrAvatar2Transform)joints[i].transform;
+#else
+                xforms[i] = joints[i].transform.ConvertSpace();
+#endif
             }
 
             return xforms;

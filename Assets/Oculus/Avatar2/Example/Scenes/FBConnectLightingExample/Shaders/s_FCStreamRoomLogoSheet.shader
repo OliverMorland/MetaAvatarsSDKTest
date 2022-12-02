@@ -30,6 +30,7 @@
                 float4 vertex : POSITION;
                 float2 uv1 : TEXCOORD0;
                 float2 uv2 : TEXCOORD1;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -37,6 +38,7 @@
                 float4 vertex : SV_POSITION;
                 float2 uv1 : TEXCOORD0;
                 float2 uv2 : TEXCOORD1;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             sampler2D _MainTex, _BgTex;
@@ -46,12 +48,15 @@
             v2f vert (appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
 
                 // UV Scaling
                 float num_frames = 16.;
                 float frame_rate = 8.;
-                float t = _Time.y * frame_rate; 
+                float t = _Time.y * frame_rate;
                 t = lerp(fmod(t, num_frames), num_frames - 1., step(num_frames, fmod(t, num_frames * _TimeLock)));
                 t += _FrameLock;
 
@@ -66,7 +71,7 @@
             }
 
             fixed4 frag (v2f i) : SV_Target
-            {                
+            {
                 half tex = tex2D(_MainTex, i.uv2).a;
                 half3 bg = tex2D(_BgTex, i.uv1).rgb;
                 fixed4 col = fixed4(lerp(bg, fixed3(0., 0., 0.), tex), 1);

@@ -11,6 +11,9 @@ namespace Oculus.Avatar2
         // TODO: Remove from interface when API is finalized and component can be accessed directly
         bool TryGetTransform(CAPI.ovrAvatar2JointType jointType, out Transform tx);
 
+        // TODO: Remove from interface when API is finalized and component can be accessed directly
+        bool TryGetPositionAndOrientation(CAPI.ovrAvatar2JointType jointType, out Vector3 pos, out Quaternion rot);
+
         void UpdateJoints(float deltaTime);
     }
 
@@ -88,7 +91,7 @@ namespace Oculus.Avatar2
             // Only do the work if someone cares about it
             if (_jointMonitor == null || _monitoredJointPoses.Count == 0) { return; }
 
-            bool validObjectTransforms = false;
+            bool validObjectTransforms;
             unsafe { validObjectTransforms = entityPose.objectTransforms != null; }
 
             if (validObjectTransforms)
@@ -102,7 +105,7 @@ namespace Oculus.Avatar2
                     // Use root transform values instead
                     // BUG: Native sdk shouldn't be giving NaN values in the first place
                     if (tx.IsNan()) {
-                        tx = _baseTransform;
+                        tx = (CAPI.ovrAvatar2Transform)_baseTransform;
                     }
 
                     // Update transform

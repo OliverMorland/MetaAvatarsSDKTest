@@ -29,6 +29,7 @@ namespace Oculus.Avatar2
         public string NameTextureParameter_normalTexture = "_BumpMap";
         public string NameTextureParameter_occlusionTexture = "_OcclusionMap";
         public string NameTextureParameter_emissiveTexture = "_EmissiveMap";
+        public string NameTextureParameter_flowTexture = "_FlowMap";
 
         public string NameColorParameter_BaseColorFactor = "_Color";
         public bool UseColorParameter_BaseColorFactor = false;
@@ -47,6 +48,8 @@ namespace Oculus.Avatar2
 
         public string[] NameFloatConstants;
         public float[] ValueFloatConstants;
+
+        public OvrAvatarMaterialExtensionConfig ExtensionConfiguration;
 
         public void ApplyKeywords(Material material)
         {

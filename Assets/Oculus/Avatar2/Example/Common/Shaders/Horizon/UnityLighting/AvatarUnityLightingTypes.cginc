@@ -4,13 +4,13 @@
 #include "UnityCG.cginc"
 #include "AutoLight.cginc"
 
-#include "../../AvatarCustom.cginc"
+#include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
 // vertex input data
 struct appdata {
   OVR_REQUIRED_VERTEX_FIELDS
   float4 uv : OVR_FIRST_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
-  float4 texcoord1 : OVR_SECOND_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
+  float4 ormt : OVR_SECOND_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
   float4 texcoord2 : OVR_THIRD_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
   float4 texcoord3 : OVR_FOURTH_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
   fixed4 color : COLOR;
@@ -38,6 +38,7 @@ struct v2f {
 #if SHADER_TARGET >= 30
   float4 lmap : TEXCOORD8;
 #endif
+  float4 ormt : TEXCOORD9;
   UNITY_VERTEX_INPUT_INSTANCE_ID
   UNITY_VERTEX_OUTPUT_STEREO
 };
@@ -60,6 +61,7 @@ struct v2f {
 #if SHADER_TARGET >= 30
   float4 lmap : TEXCOORD8;
 #endif
+  float4 ormt : TEXCOORD9;
   UNITY_VERTEX_INPUT_INSTANCE_ID
   UNITY_VERTEX_OUTPUT_STEREO
 };
@@ -79,6 +81,7 @@ struct v2f {
   float3 worldNormal : TEXCOORD3;
   float4 worldPos : TEXCOORD4;
   float4 lmap : TEXCOORD5;
+  float4 ormt : TEXCOORD9;
   UNITY_LIGHTING_COORDS(6,7)
   UNITY_VERTEX_INPUT_INSTANCE_ID
   UNITY_VERTEX_OUTPUT_STEREO
@@ -102,6 +105,7 @@ struct v2f {
   float3 tSpace1 : TEXCOORD9;
   float3 tSpace2 : TEXCOORD10;
 #endif
+  float4 ormt : TEXCOORD11;
   UNITY_VERTEX_INPUT_INSTANCE_ID
   UNITY_VERTEX_OUTPUT_STEREO
 };

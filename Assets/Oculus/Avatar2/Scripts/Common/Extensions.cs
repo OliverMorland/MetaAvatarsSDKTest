@@ -31,12 +31,37 @@ namespace Oculus.Avatar2
         }
 
         /// <summary>
+        /// Removes an item in a sorted list using BinarySearch.
+        /// </summary>
+        public static bool RemoveSorted<T>(this List<T> list, T item, IComparer<T> comparer)
+        {
+            int index = list.BinarySearch(item, comparer);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            list.RemoveAt(index);
+            return true;
+        }
+
+        /// <summary>
         /// Insert an item into a sorted list range using BinarySearch.
         /// </summary>
         public static void AddSorted<T>(this List<T> list, int start, int count, T item, IComparer<T> comparer)
         {
             int index = list.BinarySearch(start, count, item, comparer);
             list.Insert(index < 0 ? ~index : index, item);
+        }
+    }
+
+    public static class FloatExtenstions
+    {
+        private const float DEFAULT_EPS = 1e-30f;
+
+        public static bool IsApproximatelyZero(this float x, float eps = DEFAULT_EPS)
+        {
+            return Mathf.Abs(x) <= eps;
         }
     }
 }

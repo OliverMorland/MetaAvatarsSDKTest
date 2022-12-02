@@ -27,11 +27,8 @@ SubShader {
 CGPROGRAM
 #pragma surface surf MobileBlinnPhong vertex:vert exclude_path:prepass nolightmap noforwardadd halfasview interpolateview
 
-    // the following lines are essential for adding GPU skinning, along with modification of the vertex shader below
-    #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-    #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
     #pragma target 3.5 // necessary for use of SV_VertexID
-    #include "../AvatarCustom.cginc"
+    #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
 inline fixed4 LightingMobileBlinnPhong (SurfaceOutput s, fixed3 lightDir, fixed3 halfDir, fixed atten)
 {

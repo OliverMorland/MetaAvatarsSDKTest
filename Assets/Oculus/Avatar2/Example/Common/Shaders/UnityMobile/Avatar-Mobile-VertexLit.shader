@@ -38,19 +38,19 @@ SubShader {
 
         #pragma vertex vert
         #pragma fragment frag
-        #pragma target 2.0
+        #pragma target 3.5 // necessary for use of SV_VertexID
         #include "UnityCG.cginc"
         #pragma multi_compile_fog
         #define USING_FOG (defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2))
+        #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
         float4 _MainTex_ST;
 
-        struct appdata
-        {
-            float3 pos : POSITION;
-            float3 uv1 : TEXCOORD1;
-            float3 uv0 : TEXCOORD0;
-            UNITY_VERTEX_INPUT_INSTANCE_ID
+        struct appdata {
+          OVR_REQUIRED_VERTEX_FIELDS
+          float4 uv0 : OVR_FIRST_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
+          float4 uv1 : OVR_SECOND_AVAILABLE_VERTEX_TEXCOORD_SEMANTIC;
+          UNITY_VERTEX_INPUT_INSTANCE_ID
         };
 
         struct v2f
@@ -67,21 +67,24 @@ SubShader {
 
         v2f vert(appdata IN)
         {
-            v2f o;
+            OVR_INITIALIZE_VERTEX_FIELDS(IN);
             UNITY_SETUP_INSTANCE_ID(IN);
+            v2f o;
+            UNITY_INITIALIZE_OUTPUT(v2f,o);
+            UNITY_TRANSFER_INSTANCE_ID(IN,o);
             UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
             o.uv0 = IN.uv1.xy * unity_LightmapST.xy + unity_LightmapST.zw;
             o.uv1 = IN.uv0.xy * _MainTex_ST.xy + _MainTex_ST.zw;
 
+            const OvrVertexData vertexData = OVR_CREATE_VERTEX_DATA(IN);
         #if USING_FOG
-            float3 eyePos = UnityObjectToViewPos(IN.pos);
+            float3 eyePos = UnityObjectToViewPos(vertexData.position);
             float fogCoord = length(eyePos.xyz);
             UNITY_CALC_FOG_FACTOR_RAW(fogCoord);
             o.fog = saturate(unityFogFactor);
         #endif
-
-            o.pos = UnityObjectToClipPos(IN.pos);
+            o.pos = UnityObjectToClipPos(vertexData.position);
 
             return o;
         }

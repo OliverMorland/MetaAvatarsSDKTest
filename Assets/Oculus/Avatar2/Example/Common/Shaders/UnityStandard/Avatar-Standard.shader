@@ -81,11 +81,10 @@ Shader "Avatar/Standard"
             #pragma shader_feature_local _GLOSSYREFLECTIONS_OFF
             #pragma shader_feature_local _PARALLAXMAP
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma multi_compile_fwdbase
             #pragma multi_compile_fog
@@ -123,11 +122,10 @@ Shader "Avatar/Standard"
             #pragma shader_feature_local _DETAIL_MULX2
             #pragma shader_feature_local _PARALLAXMAP
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma multi_compile_fwdadd_fullshadows
             #pragma multi_compile_fog
@@ -162,11 +160,10 @@ Shader "Avatar/Standard"
             // Uncomment the following line to enable dithering LOD crossfade. Note: there are more in the file to uncomment for other passes.
             //#pragma multi_compile _ LOD_FADE_CROSSFADE
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma vertex vertShadowCaster
             #pragma fragment fragShadowCaster
@@ -198,11 +195,10 @@ Shader "Avatar/Standard"
             #pragma shader_feature_local _DETAIL_MULX2
             #pragma shader_feature_local _PARALLAXMAP
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma multi_compile_prepassfinal
             #pragma multi_compile_instancing
@@ -238,11 +234,10 @@ Shader "Avatar/Standard"
             #pragma shader_feature_local _DETAIL_MULX2
             #pragma shader_feature EDITOR_VISUALIZATION
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #include "UnityStandardMeta.cginc"
             ENDCG
@@ -276,11 +271,10 @@ Shader "Avatar/Standard"
             // SM2.0: NOT SUPPORTED shader_feature_local _DETAIL_MULX2
             // SM2.0: NOT SUPPORTED shader_feature_local _PARALLAXMAP
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma skip_variants SHADOWS_SOFT DIRLIGHTMAP_COMBINED
 
@@ -315,11 +309,10 @@ Shader "Avatar/Standard"
             // SM2.0: NOT SUPPORTED shader_feature_local _PARALLAXMAP
             #pragma skip_variants SHADOWS_SOFT
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityInstancing.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma multi_compile_fwdadd_fullshadows
             #pragma multi_compile_fog
@@ -346,11 +339,8 @@ Shader "Avatar/Standard"
             #pragma skip_variants SHADOWS_SOFT
             #pragma multi_compile_shadowcaster
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #pragma vertex vertShadowCaster
             #pragma fragment fragShadowCaster
@@ -381,11 +371,9 @@ Shader "Avatar/Standard"
             #pragma shader_feature_local _DETAIL_MULX2
             #pragma shader_feature EDITOR_VISUALIZATION
 
-            // the following 3 are essential for adding GPU skinning, along with modification of the vertex shader below
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
-            #include "../AvatarCustom.cginc"
+            #include "UnityCG.cginc"
+            #include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
             #include "UnityStandardMeta.cginc"
             ENDCG

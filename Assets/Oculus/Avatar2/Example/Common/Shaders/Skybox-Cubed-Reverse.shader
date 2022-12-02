@@ -27,6 +27,12 @@ SubShader {
         half _Exposure;
         float _Rotation;
 
+        static const float GAMMA = 2.2;
+        static const float INV_GAMMA = 1.0 / GAMMA;
+        float3 linearTosRGB(float3 color) {
+            return pow(color, float3(INV_GAMMA, INV_GAMMA, INV_GAMMA));
+        }
+
         float3 RotateAroundYInDegrees (float3 vertex, float degrees)
         {
             float alpha = degrees * UNITY_PI / 180.0;
@@ -65,7 +71,11 @@ SubShader {
             half3 c = DecodeHDR (tex, _Tex_HDR);
             c = c * _Tint.rgb * unity_ColorSpaceDouble.rgb;
             c *= _Exposure;
+#ifdef UNITY_COLORSPACE_GAMMA
+            return half4(linearTosRGB(c),1); // IMPORTANT: Use when in Unity GAMMA rendering mode
+#else
             return half4(c, 1);
+#endif
         }
         ENDCG
     }

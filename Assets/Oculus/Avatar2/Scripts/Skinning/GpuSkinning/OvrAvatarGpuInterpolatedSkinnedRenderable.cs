@@ -19,37 +19,36 @@ namespace Oculus.Skinning.GpuSkinning
      * @see OvrAvatarGpuSkinnedRenderable
      * @see OvrGpuSkinningConfiguration.MotionSmoothing
      */
-    public class OvrAvatarGpuInterpolatedSkinnedRenderable : OvrAvatarGpuSkinnedRenderable
+    public class OvrAvatarGpuInterpolatedSkinnedRenderable : OvrAvatarGpuSkinnedRenderableBase
     {
+        // Number of animation frames required to be considered "completely valid"
+        private const int NUM_ANIM_FRAMES_NEEDED_FOR_CURRENT_RENDER = 2;
+
+        public IInterpolationValueProvider InterpolationValueProvider { get; internal set; }
+
         private CAPI.ovrAvatar2Transform _skinningOriginFrameZero;
         private CAPI.ovrAvatar2Transform _skinningOriginFrameOne;
-
-        private MaterialPropertyBlock _matBlock;
-
-        private bool _invertInterpolationValue = false;
-
-        public IInterpolationValueProvider InterpolationValueProvider { get; set; }
 
         // 2 "output depth texels" per "atlas packer" slice to interpolate between
         // and enable bilinear filtering to have hardware to the interpolation
         // between depth texels for us
+        protected override string LogScope => "OvrAvatarGpuInterpolatedSkinnedRenderable";
         protected override FilterMode SkinnerOutputFilterMode => FilterMode.Bilinear;
         protected override int SkinnerOutputDepthTexelsPerSlice => 2;
+        protected override bool InterpolateAttributes => true;
 
-        protected override void Awake()
+        private int _numValidAnimationFrames;
+
+        protected override void Dispose(bool isDisposing)
         {
-            base.Awake();
-            _matBlock = new MaterialPropertyBlock();
+            InterpolationValueProvider = null;
+
+            base.Dispose(isDisposing);
         }
 
-        protected override void OnDestroy()
+        public override void UpdateSkinningOrigin(in CAPI.ovrAvatar2Transform skinningOrigin)
         {
-            base.OnDestroy();
-            _matBlock = null;
-        }
-
-        public override void UpdateSkinningOrigin(CAPI.ovrAvatar2Transform skinningOrigin)
-        {
+            // Replace base implementation
             switch (SkinnerWriteDestination)
             {
                 case SkinningOutputFrame.FrameZero:
@@ -61,62 +60,77 @@ namespace Oculus.Skinning.GpuSkinning
             }
         }
 
-        public override bool UpdateJointMatrices(CAPI.ovrAvatar2EntityId entityId, OvrAvatarPrimitive primitive,
-            CAPI.ovrAvatar2PrimitiveRenderInstanceID primitiveInstanceId)
+        protected override void OnAnimationEnabledChanged(bool isNowEnabled)
         {
-            bool returnVal = base.UpdateJointMatrices(entityId, primitive, primitiveInstanceId);
-
-            // ASSUMPTION: This is called before LateUpdate below so
-            // the "fast forward the frame times" logic happens before updating interpolation
-            // value between frames.
-            // ASSUMPTION: This is called after UpdateSkinningOrigin above
-            // so that the change of "skinning destination" does not affect that call
-            SkinningOutputFrame nextDest = SkinningOutputFrame.FrameZero;
-            switch (SkinnerWriteDestination)
+            if (isNowEnabled)
             {
-                case SkinningOutputFrame.FrameZero:
-                    nextDest = SkinningOutputFrame.FrameOne;
-                    _invertInterpolationValue = true;
-                    break;
-
-                case SkinningOutputFrame.FrameOne:
-                    nextDest = SkinningOutputFrame.FrameZero;
-                    _invertInterpolationValue = false;
-                    break;
+                // Reset valid frame counter on re-enabling animation
+                _numValidAnimationFrames = 0;
+                SkinnerWriteDestination = SkinningOutputFrame.FrameOne;
             }
-
-            // Update the skinning write destination for next frame
-            SkinnerWriteDestination = nextDest;
-            return returnVal;
         }
 
-        private void LateUpdate()
+        internal override void AnimationFrameUpdate()
         {
-            // TODO*: Go through some "UpdateInternal" type interface controlled via OvrAvatarEntity
+            // Replaces logic in base class
 
-            float lerpValue = 0.0f;
+            // ASSUMPTION: This call will always follow calls to update morphs and/or skinning.
+            // With that assumption, new data will be written by the morph target combiner and/or skinner, so there
+            // will be valid data at end of frame.
+            SwapWriteDestination();
 
-            // Maybe have a null guard in the setter rather than checking here
-            // every frame?
-            if (InterpolationValueProvider != null)
+            bool wasAnimDataCompletedValid = IsAnimationDataCompletelyValid;
+
+            if (_numValidAnimationFrames < NUM_ANIM_FRAMES_NEEDED_FOR_CURRENT_RENDER)
             {
-                lerpValue = InterpolationValueProvider.GetRenderInterpolationValue();
+                _numValidAnimationFrames++;
             }
 
-            // Convert from the 0 -> 1 interpolation value to one that "ping pongs" between
-            // the slices here so that an additional GPU copy isn't needed to
-            // transfer from "slice 1" to "slice 0"
-            if (_invertInterpolationValue)
+            if (!wasAnimDataCompletedValid && IsAnimationDataCompletelyValid)
             {
+                OnAnimationDataCompleted();
+            }
+        }
+
+        internal override void RenderFrameUpdate()
+        {
+            Debug.Assert(InterpolationValueProvider != null);
+
+            float lerpValue = InterpolationValueProvider.GetRenderInterpolationValue();
+
+            // Guard against insufficient animation frames available
+            // by "slamming" value to be 1.0 ("the newest value").
+            // Should hopefully not happen frequently/at all if caller manages state well (maybe on first enabling)
+            if (_numValidAnimationFrames < NUM_ANIM_FRAMES_NEEDED_FOR_CURRENT_RENDER)
+            {
+                lerpValue = 1.0f;
+            }
+
+            if (ShouldInverseInterpolationValue)
+            {
+                // Convert from the 0 -> 1 interpolation value to one that "ping pongs" between
+                // the slices here so that an additional GPU copy isn't needed to
+                // transfer from "slice 1" to "slice 0"
                 lerpValue = 1.0f - lerpValue;
             }
 
+            InterpolateSkinningOrigin(lerpValue);
+            SetAnimationInterpolationValueInMaterial(lerpValue);
+        }
+
+        internal override bool IsAnimationDataCompletelyValid => _numValidAnimationFrames >= NUM_ANIM_FRAMES_NEEDED_FOR_CURRENT_RENDER;
+
+        private void SetAnimationInterpolationValueInMaterial(float lerpValue)
+        {
             // Update the depth texel value to interpolate between skinning output slices
-            rendererComponent.GetPropertyBlock(_matBlock);
+            rendererComponent.GetPropertyBlock(MatBlock);
 
-            _matBlock.SetFloat(U_ATTRIBUTE_TEXEL_SLICE_PROP_ID, SkinnerLayoutSlice + lerpValue);
-            rendererComponent.SetPropertyBlock(_matBlock);
+            MatBlock.SetFloat(U_ATTRIBUTE_TEXEL_SLICE_PROP_ID, SkinnerLayoutSlice + lerpValue);
+            rendererComponent.SetPropertyBlock(MatBlock);
+        }
 
+        private void InterpolateSkinningOrigin(float lerpValue)
+        {
             // Update the "skinning origin" via lerp/slerp.
             // NOTE: This feels dirty as we are converting from `OvrAvatar2Vector3f/Quat` to Unity
             // versions just to do the lerp/slerp. Unnecessary conversions
@@ -133,5 +147,7 @@ namespace Oculus.Skinning.GpuSkinning
                 _skinningOriginFrameOne.scale,
                 lerpValue);
         }
+
+        private bool ShouldInverseInterpolationValue => SkinnerWriteDestination == SkinningOutputFrame.FrameZero;
     }
 }

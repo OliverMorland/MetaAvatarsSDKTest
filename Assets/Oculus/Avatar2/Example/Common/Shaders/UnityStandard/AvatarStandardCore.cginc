@@ -375,6 +375,7 @@ struct VertexOutputForwardBase
 
 VertexOutputForwardBase vertForwardBase (VertexInput v)
 {
+    OVR_INITIALIZE_VERTEX_FIELDS(v);
     UNITY_SETUP_INSTANCE_ID(v);
     VertexOutputForwardBase o;
     UNITY_INITIALIZE_OUTPUT(VertexOutputForwardBase, o);
@@ -383,16 +384,9 @@ VertexOutputForwardBase vertForwardBase (VertexInput v)
 
     // debug...
     //v.vertex.xyz += v.normal * 0.03;
+    const OvrVertexData vertexData = OVR_CREATE_VERTEX_DATA(v);
 
-#if defined(OVR_VERTEX_FETCH_TEXTURE) || defined(OVR_VERTEX_FETCH_TEXTURE_UNORM)
-    v.vertex = AvatarGpuSkinningVertexPositions(v.vid);
-    v.normal = AvatarGpuSkinningVertexNormals(v.vid);
-    #if defined(OVR_VERTEX_HAS_TANGENTS)
-        v.tangent = AvatarGpuSkinningVertexTangents(v.vid);
-    #endif
-#endif
-
-    float4 posWorld = mul(unity_ObjectToWorld, v.vertex);
+    float4 posWorld = mul(unity_ObjectToWorld, vertexData.position);
     #if UNITY_REQUIRE_FRAG_WORLDPOS
         #if UNITY_PACK_WORLDPOS_WITH_TANGENT
             o.tangentToWorldAndPackedData[0].w = posWorld.x;
@@ -403,13 +397,13 @@ VertexOutputForwardBase vertForwardBase (VertexInput v)
         #endif
     #endif
 
-    o.pos = UnityObjectToClipPos(v.vertex);
+    o.pos = UnityObjectToClipPos(vertexData.position);
 
     o.tex = TexCoords(v);
     o.eyeVec.xyz = NormalizePerVertexNormal(posWorld.xyz - _WorldSpaceCameraPos);
-    float3 normalWorld = UnityObjectToWorldNormal(v.normal);
-    #ifdef _TANGENT_TO_WORLD
-        float4 tangentWorld = float4(UnityObjectToWorldDir(v.tangent.xyz), v.tangent.w);
+    float3 normalWorld = UnityObjectToWorldNormal(vertexData.normal);
+    #if defined(_TANGENT_TO_WORLD) && defined(OVR_VERTEX_HAS_TANGENTS)
+        float4 tangentWorld = float4(UnityObjectToWorldDir(vertexData.tangent.xyz), vertexData.tangent.w);
 
         float3x3 tangentToWorld = CreateTangentToWorldPerVertex(normalWorld, tangentWorld.xyz, tangentWorld.w);
         o.tangentToWorldAndPackedData[0].xyz = tangentToWorld[0];
@@ -421,14 +415,14 @@ VertexOutputForwardBase vertForwardBase (VertexInput v)
         o.tangentToWorldAndPackedData[2].xyz = normalWorld;
     #endif
 
-    //We need this for shadow receving
+    //We need this for shadow receiving
     UNITY_TRANSFER_LIGHTING(o, v.uv1);
 
     o.ambientOrLightmapUV = VertexGIForward(v, posWorld, normalWorld);
 
     #ifdef _PARALLAXMAP
         TANGENT_SPACE_ROTATION;
-        half3 viewDirForParallax = mul (rotation, ObjSpaceViewDir(v.vertex));
+        half3 viewDirForParallax = mul (rotation, ObjSpaceViewDir(vertexData.position));
         o.tangentToWorldAndPackedData[0].w = viewDirForParallax.x;
         o.tangentToWorldAndPackedData[1].w = viewDirForParallax.y;
         o.tangentToWorldAndPackedData[2].w = viewDirForParallax.z;
@@ -492,28 +486,23 @@ struct VertexOutputForwardAdd
 
 VertexOutputForwardAdd vertForwardAdd (VertexInput v)
 {
+    OVR_INITIALIZE_VERTEX_FIELDS(v);
     UNITY_SETUP_INSTANCE_ID(v);
     VertexOutputForwardAdd o;
     UNITY_INITIALIZE_OUTPUT(VertexOutputForwardAdd, o);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-#if defined(OVR_VERTEX_FETCH_TEXTURE) || defined(OVR_VERTEX_FETCH_TEXTURE_UNORM)
-    v.vertex = AvatarGpuSkinningVertexPositions(v.vid);
-    v.normal = AvatarGpuSkinningVertexNormals(v.vid);
-    #if defined(OVR_VERTEX_HAS_TANGENTS)
-        v.tangent = AvatarGpuSkinningVertexTangents(v.vid);
-    #endif
-#endif
+    const OvrVertexData vertexData = OVR_CREATE_VERTEX_DATA(v);
 
-    float4 posWorld = mul(unity_ObjectToWorld, v.vertex);
-    o.pos = UnityObjectToClipPos(v.vertex);
+    float4 posWorld = mul(unity_ObjectToWorld, vertexData.position);
+    o.pos = UnityObjectToClipPos(vertexData.position);
 
     o.tex = TexCoords(v);
     o.eyeVec.xyz = NormalizePerVertexNormal(posWorld.xyz - _WorldSpaceCameraPos);
     o.posWorld = posWorld.xyz;
-    float3 normalWorld = UnityObjectToWorldNormal(v.normal);
-    #ifdef _TANGENT_TO_WORLD
-        float4 tangentWorld = float4(UnityObjectToWorldDir(v.tangent.xyz), v.tangent.w);
+    float3 normalWorld = UnityObjectToWorldNormal(vertexData.normal);
+    #if defined(_TANGENT_TO_WORLD) && defined(OVR_VERTEX_HAS_TANGENTS)
+        float4 tangentWorld = float4(UnityObjectToWorldDir(vertexData.tangent.xyz), vertexData.tangent.w);
 
         float3x3 tangentToWorld = CreateTangentToWorldPerVertex(normalWorld, tangentWorld.xyz, tangentWorld.w);
         o.tangentToWorldAndLightDir[0].xyz = tangentToWorld[0];
@@ -537,7 +526,7 @@ VertexOutputForwardAdd vertForwardAdd (VertexInput v)
 
     #ifdef _PARALLAXMAP
         TANGENT_SPACE_ROTATION;
-        o.viewDirForParallax = mul (rotation, ObjSpaceViewDir(v.vertex));
+        o.viewDirForParallax = mul (rotation, ObjSpaceViewDir(vertexData.position));
     #endif
 
     UNITY_TRANSFER_FOG_COMBINED_WITH_EYE_VEC(o, o.pos);
@@ -590,21 +579,16 @@ struct VertexOutputDeferred
 
 VertexOutputDeferred vertDeferred (VertexInput v)
 {
+    OVR_INITIALIZE_VERTEX_FIELDS(v);
     UNITY_SETUP_INSTANCE_ID(v);
     VertexOutputDeferred o;
     UNITY_INITIALIZE_OUTPUT(VertexOutputDeferred, o);
     UNITY_TRANSFER_INSTANCE_ID(v, o);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-#if defined(OVR_VERTEX_FETCH_TEXTURE) || defined(OVR_VERTEX_FETCH_TEXTURE_UNORM)
-    v.vertex = AvatarGpuSkinningVertexPositions(v.vid);
-    v.normal = AvatarGpuSkinningVertexNormals(v.vid);
-    #if defined(OVR_VERTEX_HAS_TANGENTS)
-        v.tangent = AvatarGpuSkinningVertexTangents(v.vid);
-    #endif
-#endif
+    const OvrVertexData vertexData = OVR_CREATE_VERTEX_DATA(v);
 
-    float4 posWorld = mul(unity_ObjectToWorld, v.vertex);
+    float4 posWorld = mul(unity_ObjectToWorld, vertexData.position);
     #if UNITY_REQUIRE_FRAG_WORLDPOS
         #if UNITY_PACK_WORLDPOS_WITH_TANGENT
             o.tangentToWorldAndPackedData[0].w = posWorld.x;
@@ -614,13 +598,13 @@ VertexOutputDeferred vertDeferred (VertexInput v)
             o.posWorld = posWorld.xyz;
         #endif
     #endif
-    o.pos = UnityObjectToClipPos(v.vertex);
+    o.pos = UnityObjectToClipPos(vertexData.position);
 
     o.tex = TexCoords(v);
     o.eyeVec = NormalizePerVertexNormal(posWorld.xyz - _WorldSpaceCameraPos);
-    float3 normalWorld = UnityObjectToWorldNormal(v.normal);
-    #ifdef _TANGENT_TO_WORLD
-        float4 tangentWorld = float4(UnityObjectToWorldDir(v.tangent.xyz), v.tangent.w);
+    float3 normalWorld = UnityObjectToWorldNormal(vertexData.normal);
+    #if defined(_TANGENT_TO_WORLD) && defined(OVR_VERTEX_HAS_TANGENTS)
+        float4 tangentWorld = float4(UnityObjectToWorldDir(vertexData.tangent.xyz), vertexData.tangent.w);
 
         float3x3 tangentToWorld = CreateTangentToWorldPerVertex(normalWorld, tangentWorld.xyz, tangentWorld.w);
         o.tangentToWorldAndPackedData[0].xyz = tangentToWorld[0];
@@ -644,7 +628,7 @@ VertexOutputDeferred vertDeferred (VertexInput v)
 
     #ifdef _PARALLAXMAP
         TANGENT_SPACE_ROTATION;
-        half3 viewDirForParallax = mul (rotation, ObjSpaceViewDir(v.vertex));
+        half3 viewDirForParallax = mul (rotation, ObjSpaceViewDir(vertexData.position));
         o.tangentToWorldAndPackedData[0].w = viewDirForParallax.x;
         o.tangentToWorldAndPackedData[1].w = viewDirForParallax.y;
         o.tangentToWorldAndPackedData[2].w = viewDirForParallax.z;

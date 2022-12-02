@@ -340,14 +340,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   CurrentExposure: 1
   ExposureShaderParameterName: u_Exposure
-  DiffuseEnvironmentCubeMap: {fileID: 8900000, guid: b995f42c5698caa459aaa1f86ac461ee,
+  DiffuseEnvironmentCubeMap: {fileID: 8900000, guid: 7a132cfcfea91f244ad57f7404e24aa6,
     type: 3}
-  DiffuseEnvironmentShaderParameterName: u_DiffuseEnvSampler
-  SpecularEnvironmentCubeMap: {fileID: 8900000, guid: 861010f28886158448487b3f7871a5a5,
+  DiffuseEnvironmentShaderParameterNames:
+  - u_DiffuseEnvSampler
+  - u_LambertianEnvSampler
+  SpecularEnvironmentCubeMap: {fileID: 8900000, guid: d98d3ec907ca8b843896d184bb45b347,
     type: 3}
-  SpecularEnvironmentShaderParameterName: u_SpecularEnvSampler
+  SpecularEnvironmentShaderParameterNames:
+  - u_SpecularEnvSampler
+  - u_GGXEnvSampler
   SpecularMapMipCountShaderPameterName: u_MipCount
   BrdfLutMap: {fileID: 2800000, guid: 918eb5f61eea9f6479953048b19170c0, type: 3}
-  BrdfLutShaderParameterName: u_brdfLUT
+  BrdfLutShaderParameterNames:
+  - u_brdfLUT
+  - u_GGXLUT
   CubeMapMaterial: {fileID: 2100000, guid: 35f80c2b3fdf34d4aa85db1bf46f0983, type: 2}
   CubeMapShaderParameterName: _Tex

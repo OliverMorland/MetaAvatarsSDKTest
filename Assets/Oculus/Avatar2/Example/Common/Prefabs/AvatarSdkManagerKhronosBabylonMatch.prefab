@@ -45,6 +45,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   DefaultShaderConfigurationInitializer: {fileID: 11400000, guid: 8581c3cc799ee524ba06f56986275c6a,
     type: 2}
+  FastLoadConfigurationInitializer: {fileID: 11400000, guid: 97b3adcf896459e42a47943963d32f6c,
+    type: 2}
 --- !u!1001 &7513487270613477842
 PrefabInstance:
   m_ObjectHideFlags: 0

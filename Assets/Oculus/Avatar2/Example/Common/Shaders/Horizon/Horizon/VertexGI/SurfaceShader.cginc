@@ -33,7 +33,7 @@ int nShadowCascadeTiles() {
 }
 
 #include "../FBSafeMode.cginc"
-#include "../AvatarCustom.cginc"
+#include "../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 
 float4x4  _shadowMatrix;
 #if defined(DISPLACEMENT) || defined (BLEND_SHAPES)

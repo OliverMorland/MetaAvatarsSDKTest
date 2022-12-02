@@ -47,7 +47,7 @@ namespace Oculus.Avatar2
         public void SetMaterialShader(Shader shader)
         {
             // remember shader for future renderables
-            _material.Shader = shader;
+            _material.SetShader(shader);
             foreach (var meshNodeKVP in _meshNodes)
             {
                 foreach (var primRenderable in meshNodeKVP.Value)

@@ -45,6 +45,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   DefaultShaderConfigurationInitializer: {fileID: 11400000, guid: 4e831d6cee3eb114d8ac7795000c0f7f,
     type: 2}
+  FastLoadConfigurationInitializer: {fileID: 11400000, guid: 97b3adcf896459e42a47943963d32f6c,
+    type: 2}
 --- !u!1001 &7513487270613477842
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -116,6 +118,21 @@ PrefabInstance:
       propertyPath: shaderManager
       value: 
       objectReference: {fileID: 2081836299234360964}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: assetVersionQuest2
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: assetVersionAndroid
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: assetVersionDefault
+      value: 4
+      objectReference: {fileID: 0}
     - target: {fileID: 4870205409715631025, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: m_RootOrder

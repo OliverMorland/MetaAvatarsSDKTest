@@ -109,7 +109,6 @@ namespace Oculus.Avatar2
 
         public readonly CAPI.ovrAvatar2Id resourceId;
 
-
         internal OvrAvatarImage CreateImage(in CAPI.ovrAvatar2MaterialTexture textureData
             , in CAPI.ovrAvatar2Image imageData, uint imageIndex, CAPI.ovrAvatar2Id resourceId)
         {
@@ -123,7 +122,6 @@ namespace Oculus.Avatar2
         {
             OvrAvatarLog.Assert(resourceIdentifier != CAPI.ovrAvatar2Id.Invalid);
             this.resourceId = resourceIdentifier;
-
             // only allow for load time tracking overhead if logging level is high enough
             if (Debug.isDebugBuild)
             {

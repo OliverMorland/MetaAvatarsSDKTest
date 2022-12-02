@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace Oculus.Skinning.GpuSkinning
 {
-    internal enum SkinningOutputFrame { FrameZero, FrameOne }
+    internal enum SkinningOutputFrame { FrameZero, FrameOne, FrameTwo }
 
     internal interface IOvrGpuSkinnerDrawCall
     {

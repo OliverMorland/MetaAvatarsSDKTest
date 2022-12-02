@@ -24,8 +24,8 @@ public class LipSyncDebugger : MonoBehaviour
     void StartLipSyncMic()
     {
         Debug.Log("Start Lip Sync");
-        LipSyncMicInput lipSyncMic = FindObjectOfType<LipSyncMicInput>();
-        lipSyncMic.StartMicrophone_Internal();
+        //LipSyncMicInput lipSyncMic = FindObjectOfType<LipSyncMicInput>();
+        //lipSyncMic.StartMicrophone_Internal();
     }
 
     void OnBButtonPressed()
@@ -39,8 +39,8 @@ public class LipSyncDebugger : MonoBehaviour
     void StopLipSyncMic()
     {
         Debug.Log("Stop Lip Sync");
-        LipSyncMicInput lipSyncMic = FindObjectOfType<LipSyncMicInput>();
-        lipSyncMic.StopMicrophone_Internal();
+        //LipSyncMicInput lipSyncMic = FindObjectOfType<LipSyncMicInput>();
+        //lipSyncMic.StopMicrophone_Internal();
     }
 
     void OnXButtonPressed()
@@ -69,8 +69,8 @@ public class LipSyncDebugger : MonoBehaviour
     {
         Recorder recorder = FindObjectOfType<Recorder>();
         AudioClip audioClip = recorder.AudioClip;
-        LipSyncMicInput lipSyncMicInput = FindObjectOfType<LipSyncMicInput>();
-        lipSyncMicInput.audioSource.clip = audioClip;
+        //LipSyncMicInput lipSyncMicInput = FindObjectOfType<LipSyncMicInput>();
+        //lipSyncMicInput.audioSource.clip = audioClip;
     }
 
     void SetLipSyncAudioCLipToEqualSpeakers()
@@ -78,10 +78,10 @@ public class LipSyncDebugger : MonoBehaviour
         Debug.Log("OLILOG Setting Lip Sync Audio Clip");
         Speaker speaker = FindObjectOfType<Speaker>();
         AudioSource audioSource = speaker.GetComponent<AudioSource>();
-        LipSyncMicInput lipSyncMicInput = FindObjectOfType<LipSyncMicInput>();
-        lipSyncMicInput.audioSource.Stop();
-        lipSyncMicInput.audioSource.clip = audioSource.clip;
-        lipSyncMicInput.audioSource.Play();
+        //LipSyncMicInput lipSyncMicInput = FindObjectOfType<LipSyncMicInput>();
+        //lipSyncMicInput.audioSource.Stop();
+        //lipSyncMicInput.audioSource.clip = audioSource.clip;
+        //lipSyncMicInput.audioSource.Play();
     }
 
     void OnYButtonPressed()

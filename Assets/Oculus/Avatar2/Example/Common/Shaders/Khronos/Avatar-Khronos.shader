@@ -7,7 +7,7 @@ Shader "Avatar/Khronos"
     Properties
     {
       // NOTE: This texture can be visualized in the Unity editor, just expand in inspector and manually change "Dimension" to "2D" on top line
-      u_AttributeTexture("Vertex Atrribute map", 3D) = "white" {}
+      u_AttributeTexture("Vertex Attribute map", 3D) = "white" {}
 
       u_NormalSampler("Normal map", 2D) = "white" {}
       u_NormalScale("Normal map scale", Float) = 1.0
@@ -55,7 +55,7 @@ Shader "Avatar/Khronos"
       //u_brdfLUT ("BRDF LUT Texture", 2D) = "Assets/Oculus/Avatar2/Example/Scenes/BRDF_LUT" {}
 
       // DEBUG_MODES: Uncomment to use Debug modes, must match the multi_compile defined below
-      // [KeywordEnum(None, BaseColor, Occlusion, Roughness, Metallic, Normal, Normal Map, Emissive, View, Punctual, Punctual Specular, Punctual Diffuse, IBL, SH, No Tone Map)] Debug("Debug Render", Float) = 0
+      // [KeywordEnum(None, BaseColor, Occlusion, Roughness, Metallic, Thickness, Normal, Normal Map, Emissive, View, Punctual, Punctual Specular, Punctual Diffuse, IBL, IBL Specular, IBL Diffuse, SH, No Tone Map)] Debug("Debug Render", Float) = 0
 
       // LIGHTING_MODES: Uncomment to use Lighting modes, must match the multi_compile defined below
       // [KeywordEnum(IBL plus Punctual, SH plus Punctual, IBL Only, SH Only, Punctual Only)] Lighting_Mode("Lighting Mode", Float) = 0
@@ -65,12 +65,20 @@ Shader "Avatar/Khronos"
 
       // BRDFLUT_MODES: Uncomment to use BRDF Look up Table (LUT) modes, must match the multi_compile defined below
       [KeywordEnum(On, Off)] BRDF_LUT_Mode("BRDF LUT Mode", Float) = 0
+      
+      // MATERIAL_MODES: Uncomment to use Material modes, must match the multi_compile defined below
+      [KeywordEnum(Texture, Vertex)] Material_Mode("Material Mode", Float) = 0
+
+      // Cull mode (Off, Front, Back)
+      [Enum(UnityEngine.Rendering.CullMode)] _Cull("Cull", Float) = 2
 
     }
     SubShader
     {
         Tags { "RenderType"="Opaque" }
         LOD 100
+
+        Cull [_Cull]
 
         // Old Unity Render Pipeline, Single Light
         Pass
@@ -89,26 +97,22 @@ Shader "Avatar/Khronos"
             // PRAGMAS: Pragmas cannot exist in cginc files so include them here
 
             // DEBUG_MODES: Must match the Properties specified above
-            // #pragma multi_compile __ DEBUG_BASECOLOR DEBUG_OCCLUSION DEBUG_ROUGHNESS DEBUG_METALLIC DEBUG_NORMAL DEBUG_NORMAL_MAP DEBUG_EMISSIVE DEBUG_VIEW DEBUG_PUNCTUAL DEBUG_PUNCTUAL_SPECULAR DEBUG_PUNCTUAL_DIFFUSE DEBUG_IBL DEBUG_SH DEBUG_NO_TONE_MAP
-            #define DEBUG_LIGHTING (defined(DEBUG_METALLIC) || defined(DEBUG_ROUGHNESS) || defined(DEBUG_NORMAL) || defined(DEBUG_NORMAL_MAP) || defined(DEBUG_BASECOLOR) || defined(DEBUG_OCCLUSION) || defined(DEBUG_EMISSIVE) || defined(DEBUG_F0) || defined(DEBUG_ALPHA) || defined(DEBUG_VIEW) || defined(DEBUG_PUNCTUAL) || defined(DEBUG_PUNCTUAL_SPECULAR) || defined(DEBUG_PUNCTUAL_DIFFUSE) || defined(DEBUG_IBL) || defined(DEBUG_SH) || defined(DEBUG_NO_TONE_MAP))
+            // #pragma multi_compile __ DEBUG_BASECOLOR DEBUG_OCCLUSION DEBUG_ROUGHNESS DEBUG_METALLIC DEBUG_THICKNESS DEBUG_NORMAL DEBUG_NORMAL_MAP DEBUG_EMISSIVE DEBUG_VIEW DEBUG_PUNCTUAL DEBUG_PUNCTUAL_SPECULAR DEBUG_PUNCTUAL_DIFFUSE DEBUG_IBL DEBUG_IBL_SPECULAR DEBUG_IBL_DIFFUSE DEBUG_SH DEBUG_NO_TONE_MAP
+            #define DEBUG_LIGHTING (defined(DEBUG_METALLIC) || defined(DEBUG_THICKNESS) || defined(DEBUG_ROUGHNESS) || defined(DEBUG_NORMAL) || defined(DEBUG_NORMAL_MAP) || defined(DEBUG_BASECOLOR) || defined(DEBUG_OCCLUSION) || defined(DEBUG_EMISSIVE) || defined(DEBUG_F0) || defined(DEBUG_ALPHA) || defined(DEBUG_VIEW) || defined(DEBUG_PUNCTUAL) || defined(DEBUG_PUNCTUAL_SPECULAR) || defined(DEBUG_PUNCTUAL_DIFFUSE) || defined(DEBUG_IBL) || defined(DEBUG_IBL_SPECULAR) || defined(DEBUG_IBL_DIFFUSE) || defined(DEBUG_SH) || defined(DEBUG_NO_TONE_MAP))
 
             // LIGHTING_MODES: this is done to match the options of the commercial GLTF viewers
             // #pragma multi_compile LIGHTING_MODE_IBL_PLUS_PUNCTUAL LIGHTING_MODE_SH_PLUS_PUNCTUAL LIGHTING_MODE_IBL_ONLY LIGHTING_MODE_SH_ONLY LIGHTING_MODE_PUNCTUAL_ONLY
             #define LIGHTING_MODE_IBL_PLUS_PUNCTUAL
-
-            // VERTEX COLORS: activate this to transmit lo-fi model vert colors or sub mesh information in the alpha channel
-//            #pragma shader_feature HAS_VERTEX_COLOR_float4
-            #define HAS_VERTEX_COLOR_float4
 
             // TONEMAP_MODES: Must match the Properties specified above
             // #pragma multi_compile __ TONEMAP_UNCHARTED TONEMAP_HEJLRICHARD TONEMAP_ACES
 
             // BRDF_LUT_MODES: Must match the Properties specified above
             #pragma multi_compile BRDF_LUT_MODE_ON BRDF_LUT_MODE_OFF
+      
+            // MATERIAL_MODES: Must match the Properties specified above
+            #pragma multi_compile MATERIAL_MODE_TEXTURE MATERIAL_MODE_VERTEX
 
-            // Required to support Avatar SDK GPU Skinning
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
 
             // Palettization modes for Avatar FBX tool
@@ -130,7 +134,7 @@ Shader "Avatar/Khronos"
             // Include the Vertex Shader HERE
             #include "primitive-vert.cginc"
 
-            // Include the Vertex Shader HERE
+            // Include the Pixel Shader HERE
             #include "metallic-roughness-frag.cginc"
 
             ENDCG
@@ -154,31 +158,28 @@ Shader "Avatar/Khronos"
             // PRAGMAS: Pragmas cannot exist in cginc files so include them here
 
             // DEBUG_MODES: Must match the Properties specified above
-            // #pragma multi_compile __ DEBUG_BASECOLOR DEBUG_OCCLUSION DEBUG_ROUGHNESS DEBUG_METALLIC DEBUG_NORMAL DEBUG_NORMAL_MAP DEBUG_EMISSIVE DEBUG_VIEW DEBUG_PUNCTUAL DEBUG_PUNCTUAL_SPECULAR DEBUG_PUNCTUAL_DIFFUSE DEBUG_IBL DEBUG_SH DEBUG_NO_TONE_MAP
-            #define DEBUG_LIGHTING (defined(DEBUG_METALLIC) || defined(DEBUG_ROUGHNESS) || defined(DEBUG_NORMAL) || defined(DEBUG_NORMAL_MAP) || defined(DEBUG_BASECOLOR) || defined(DEBUG_OCCLUSION) || defined(DEBUG_EMISSIVE) || defined(DEBUG_F0) || defined(DEBUG_ALPHA) || defined(DEBUG_VIEW) || defined(DEBUG_PUNCTUAL) || defined(DEBUG_PUNCTUAL_SPECULAR) || defined(DEBUG_PUNCTUAL_DIFFUSE) || defined(DEBUG_IBL) || defined(DEBUG_SH) || defined(DEBUG_NO_TONE_MAP))
+            
+            // #pragma multi_compile __ DEBUG_BASECOLOR DEBUG_OCCLUSION DEBUG_ROUGHNESS DEBUG_METALLIC DEBUG_THICKNESS DEBUG_NORMAL DEBUG_NORMAL_MAP DEBUG_EMISSIVE DEBUG_VIEW DEBUG_PUNCTUAL DEBUG_PUNCTUAL_SPECULAR DEBUG_PUNCTUAL_DIFFUSE DEBUG_IBL DEBUG_IBL_SPECULAR DEBUG_IBL_DIFFUSE DEBUG_SH DEBUG_NO_TONE_MAP
+            #define DEBUG_LIGHTING (defined(DEBUG_METALLIC) || defined(DEBUG_THICKNESS) || defined(DEBUG_ROUGHNESS) || defined(DEBUG_NORMAL) || defined(DEBUG_NORMAL_MAP) || defined(DEBUG_BASECOLOR) || defined(DEBUG_OCCLUSION) || defined(DEBUG_EMISSIVE) || defined(DEBUG_F0) || defined(DEBUG_ALPHA) || defined(DEBUG_VIEW) || defined(DEBUG_PUNCTUAL) || defined(DEBUG_PUNCTUAL_SPECULAR) || defined(DEBUG_PUNCTUAL_DIFFUSE) || defined(DEBUG_IBL) || defined(DEBUG_IBL_SPECULAR) || defined(DEBUG_IBL_DIFFUSE) || defined(DEBUG_SH) || defined(DEBUG_NO_TONE_MAP))
 
             // LIGHTING_MODES: this is done to match the options of the commercial GLTF viewers
             // #pragma multi_compile __ LIGHTING_MODE_SH_ONLY LIGHTING_MODE_IBL_ONLY
-
-            // VERTEX COLORS: activate this to transmit lo-fi model vert colors or sub mesh information in the alpha channel
-//            #pragma shader_feature HAS_VERTEX_COLOR_float4
-            #define HAS_VERTEX_COLOR_float4
 
             // TONEMAP_MODES: Must match the Properties specified above
             // #pragma multi_compile __ TONEMAP_UNCHARTED TONEMAP_HEJLRICHARD TONEMAP_ACES
 
             // BRDF_LUT_MODES: Must match the Properties specified above
             #pragma multi_compile BRDF_LUT_MODE_ON BRDF_LUT_MODE_OFF
+      
+            // MATERIAL_MODES: Must match the Properties specified above
+            #pragma multi_compile MATERIAL_MODE_TEXTURE MATERIAL_MODE_VERTEX
 
-            // Required to support Avatar SDK GPU Skinning
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
 
             // Include the Vertex Shader HERE
             #include "primitive-vert.cginc"
 
-            // Include the Vertex Shader HERE
+            // Include the Pixel Shader HERE
             #include "metallic-roughness-frag.cginc"
 
             ENDCG
@@ -197,26 +198,22 @@ Shader "Avatar/Khronos"
             // PRAGMAS: Pragmas cannot exist in cginc files so include them here
 
             // DEBUG_MODES: Must match the Properties specified above
-            // #pragma multi_compile __ DEBUG_BASECOLOR DEBUG_OCCLUSION DEBUG_ROUGHNESS DEBUG_METALLIC DEBUG_NORMAL DEBUG_NORMAL_MAP DEBUG_EMISSIVE DEBUG_VIEW DEBUG_PUNCTUAL DEBUG_PUNCTUAL_SPECULAR DEBUG_PUNCTUAL_DIFFUSE DEBUG_IBL DEBUG_SH DEBUG_NO_TONE_MAP
-            #define DEBUG_LIGHTING (defined(DEBUG_METALLIC) || defined(DEBUG_ROUGHNESS) || defined(DEBUG_NORMAL) || defined(DEBUG_NORMAL_MAP) || defined(DEBUG_BASECOLOR) || defined(DEBUG_OCCLUSION) || defined(DEBUG_EMISSIVE) || defined(DEBUG_F0) || defined(DEBUG_ALPHA) || defined(DEBUG_VIEW) || defined(DEBUG_PUNCTUAL) || defined(DEBUG_PUNCTUAL_SPECULAR) || defined(DEBUG_PUNCTUAL_DIFFUSE) || defined(DEBUG_IBL) || defined(DEBUG_SH) || defined(DEBUG_NO_TONE_MAP))
+            // #pragma multi_compile __ DEBUG_BASECOLOR DEBUG_OCCLUSION DEBUG_ROUGHNESS DEBUG_METALLIC DEBUG_THICKNESS DEBUG_NORMAL DEBUG_NORMAL_MAP DEBUG_EMISSIVE DEBUG_VIEW DEBUG_PUNCTUAL DEBUG_PUNCTUAL_SPECULAR DEBUG_PUNCTUAL_DIFFUSE DEBUG_IBL DEBUG_IBL_SPECULAR DEBUG_IBL_DIFFUSE DEBUG_SH DEBUG_NO_TONE_MAP
+            #define DEBUG_LIGHTING (defined(DEBUG_METALLIC) || defined(DEBUG_THICKNESS) || defined(DEBUG_ROUGHNESS) || defined(DEBUG_NORMAL) || defined(DEBUG_NORMAL_MAP) || defined(DEBUG_BASECOLOR) || defined(DEBUG_OCCLUSION) || defined(DEBUG_EMISSIVE) || defined(DEBUG_F0) || defined(DEBUG_ALPHA) || defined(DEBUG_VIEW) || defined(DEBUG_PUNCTUAL) || defined(DEBUG_PUNCTUAL_SPECULAR) || defined(DEBUG_PUNCTUAL_DIFFUSE) || defined(DEBUG_IBL) || defined(DEBUG_IBL_SPECULAR) || defined(DEBUG_IBL_DIFFUSE) || defined(DEBUG_SH) || defined(DEBUG_NO_TONE_MAP))
 
             // LIGHTING_MODES: this is done to match the options of the commercial GLTF viewers
             // #pragma multi_compile LIGHTING_MODE_IBL_PLUS_PUNCTUAL LIGHTING_MODE_SH_PLUS_PUNCTUAL LIGHTING_MODE_IBL_ONLY LIGHTING_MODE_SH_ONLY LIGHTING_MODE_PUNCTUAL_ONLY
             #define LIGHTING_MODE_IBL_PLUS_PUNCTUAL
-
-            // VERTEX COLORS: activate this to transmit lo-fi model vert colors or sub mesh information in the alpha channel
-//            #pragma shader_feature HAS_VERTEX_COLOR_float4
-            #define HAS_VERTEX_COLOR_float4
 
             // TONEMAP_MODES: Must match the Properties specified above
             // #pragma multi_compile __ TONEMAP_UNCHARTED TONEMAP_HEJLRICHARD TONEMAP_ACES
 
             // BRDF_LUT_MODES: Must match the Properties specified above
             #pragma multi_compile BRDF_LUT_MODE_ON BRDF_LUT_MODE_OFF
+          
+            // MATERIAL_MODES: Must match the Properties specified above
+            #pragma multi_compile MATERIAL_MODE_TEXTURE MATERIAL_MODE_VERTEX
 
-            // Required to support Avatar SDK GPU Skinning
-            #pragma multi_compile ___ OVR_VERTEX_FETCH_TEXTURE OVR_VERTEX_FETCH_TEXTURE_UNORM
-            #pragma multi_compile __ OVR_VERTEX_HAS_TANGENTS
             #pragma target 3.5 // necessary for use of SV_VertexID
 
             // Palettization modes for Avatar FBX tool
@@ -237,7 +234,7 @@ Shader "Avatar/Khronos"
             // Include the Vertex Shader HERE
             #include "primitive-vert.cginc"
 
-            // Include the Vertex Shader HERE
+            // Include the Pixel Shader HERE
             #include "metallic-roughness-frag.cginc"
 
             ENDCG

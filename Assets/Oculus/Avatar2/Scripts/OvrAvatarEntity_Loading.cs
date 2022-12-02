@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+
 using Unity.Collections;
 
 using UnityEngine;
@@ -81,6 +82,9 @@ namespace Oculus.Avatar2
             /// (Optional) Default Avatar is loaded and renderable
             DefaultAvatar,
 
+            /// (Optional) Fast Load Avatar is loaded and renderable
+            FastLoad,
+
             /// A non-default (CDN or preset) avatar is loaded and renderable
             UserAvatar
         }
@@ -102,6 +106,9 @@ namespace Oculus.Avatar2
 
         /// Called when Default Avatar is loaded, after entering state AvatarState.DefaultAvatar
         public AvatarStateEvent OnDefaultAvatarLoadedEvent = new AvatarStateEvent();
+
+        /// Called when Fast Load Avatar is loaded, after entering state AvatarState.FastLoad
+        public AvatarStateEvent OnFastLoadAvatarLoadedEvent = new AvatarStateEvent();
 
         /// Called the first time a User Avatar is loaded, after entering state AvatarState.UserAvatar
         public AvatarStateEvent OnUserAvatarLoadedEvent = new AvatarStateEvent();
@@ -149,6 +156,11 @@ namespace Oculus.Avatar2
 
         protected CAPI.ovrAvatar2Result entityStatus => CAPI.ovrAvatar2Entity_GetStatus(entityId);
 
+        // Hold original load settings, need after the fast load has finished, to issue the full load
+        private CAPI.ovrAvatar2EntityLODFlags _lodFilters;
+        private string[] _assetPaths;
+        private CAPI.ovrAvatar2EntityFilters _loadFilters;
+
         #endregion
 
         /////////////////////////////////////////////////
@@ -157,22 +169,25 @@ namespace Oculus.Avatar2
         #region Subclass extensions
 
         /// Called when native avatar is created, after entering state AvatarState.Created
-        protected virtual void OnCreated(){}
+        protected virtual void OnCreated() { }
 
         /// Called when skeleton is loaded, after entering state AvatarState.Skeleton
-        protected virtual void OnSkeletonLoaded(){}
+        protected virtual void OnSkeletonLoaded() { }
 
         /// Called when Default Avatar is loaded, after entering state AvatarState.DefaultAvatar
-        protected virtual void OnDefaultAvatarLoaded(){}
+        protected virtual void OnDefaultAvatarLoaded() { }
+
+        /// Called when FastLoad Avatar is loaded, after entering state AvatarState.FastLoad
+        protected virtual void OnFastLoadAvatarLoaded() { }
 
         /// Called the first time a User Avatar is loaded, after entering state AvatarState.UserAvatar
-        protected virtual void OnUserAvatarLoaded(){}
+        protected virtual void OnUserAvatarLoaded() { }
 
         /// Called at the start of Teardown() before reverting to state AvatarState.None
-        protected virtual void PreTeardown(){}
+        protected virtual void PreTeardown() { }
 
         /// Called when a load operation fails. See LoadRequestInfo for reason
-        protected virtual void OnLoadFailed(CAPI.ovrAvatar2LoadRequestInfo loadRequest) {}
+        protected virtual void OnLoadFailed(CAPI.ovrAvatar2LoadRequestInfo loadRequest) { }
 
         ///
         /// Called on any LoadRequest state change for this entity. Overriding this is not recommended because the
@@ -214,11 +229,17 @@ namespace Oculus.Avatar2
             return OvrAvatarManager.Instance.SendHasAvatarChangedRequestAsync(entityId);
         }
 
+        private bool ShouldFastLoad()
+        {
+            return OvrAvatarManager.Instance.UseFastLoadAvatar && CurrentState < AvatarState.FastLoad;
+        }
+
         /* Load local user's CDN asset with filters specified in `creationInfo.renderFilters` */
         protected void LoadUser()
         {
             LoadUserWithFilters(in _creationInfo.renderFilters);
         }
+
 
         protected void LoadUserWithFilters(in CAPI.ovrAvatar2EntityFilters filters)
         {
@@ -234,7 +255,22 @@ namespace Oculus.Avatar2
                 return;
             }
 
-            var result = CAPI.OvrAvatarEntity_LoadUserWithFilters(entityId, _userId, in filters, out var loadRequestId);
+            if (ShouldFastLoad())
+            {
+                _loadFilters = filters;
+            }
+
+            CAPI.ovrAvatar2Result result;
+            CAPI.ovrAvatar2LoadRequestId loadRequestId;
+            if (ShouldFastLoad())
+            {
+                result = CAPI.OvrAvatarEntity_LoadUserWithFiltersFast(entityId, _userId, in filters, out loadRequestId);
+            }
+            else
+            {
+                result = CAPI.OvrAvatarEntity_LoadUserWithFilters(entityId, _userId, in filters, out loadRequestId);
+            }
+
             if (result == CAPI.ovrAvatar2Result.Pending)
             {
                 OvrAvatarLog.LogDebug($"Loaded user ID {_userId} onto entity {entityId}", logScope, this);
@@ -253,9 +289,125 @@ namespace Oculus.Avatar2
             }
         }
 
+        // TODO: Rename? This is also how you load assets from cdn if it can't find it from a zip source
+        /**
+         * Load avatar assets from a Zip file from Unity streaming assets.
+         * This function loads all levels of detail.
+         * @param string[]   array of strings containing asset directories to search.
+         * @see LoadAssetsFromData
+         * @see LoadAssetsFromStreamingAssets
+         */
+        protected bool LoadAssetsFromZipSource(string[] assetPaths)
+        {
+            return LoadAssetsFromZipSource(assetPaths, _creationInfo.renderFilters.lodFlags);
+        }
+
+        /**
+         * Load avatar assets from a Zip file from Unity streaming assets.
+         * @param string[]   array of strings containing asset directories to search.
+         * @param lodFilter  level of detail(s) to load.
+         * @see LoadAssetsFromData
+         * @see LoadAssetsFromStreamingAssets
+         * @see CAPI.ovrAvatar2EntityLODFlags
+         */
+        protected bool LoadAssetsFromZipSource(string[] assetPaths, CAPI.ovrAvatar2EntityLODFlags lodFilter)
+        {
+            if (!IsCreated)
+            {
+                OvrAvatarLog.LogError("Cannot load assets before entity has been created.", logScope, this);
+                return false;
+            }
+
+            var loadFilters = _creationInfo.renderFilters;
+            loadFilters.lodFlags = lodFilter;
+
+            if (ShouldFastLoad())
+            {
+                _lodFilters = lodFilter;
+                _assetPaths = assetPaths;
+            }
+            else
+            {
+                isLoadingFullPreset = true;
+            }
+
+            bool didLoadZipAsset = false;
+
+            if (assetPaths != null)
+            {
+                foreach (var path in assetPaths)
+                {
+                    CAPI.ovrAvatar2Result result;
+                    CAPI.ovrAvatar2LoadRequestId loadRequestId;
+                    if (ShouldFastLoad())
+                    {
+                        var fastpath = path.Replace(OvrAvatarManager.Instance.GetPlatformGLBPostfix(true).ToLower(), OvrAvatarManager.Instance.GetFastLoadGLBPostfix(true).ToLower());
+                        fastpath = $"zip://{fastpath}";
+                        result = CAPI.OvrAvatarEntity_LoadUriWithFiltersFast(entityId, fastpath, loadFilters, out loadRequestId);
+                        fastLoadPresetPaths.Add(fastpath);
+                    }
+                    else
+                    {
+                        result = CAPI.OvrAvatarEntity_LoadUriWithFilters(entityId, $"zip://{path}", loadFilters, out loadRequestId);
+                    }
+                    if (result.IsSuccess())
+                    {
+                        didLoadZipAsset = true;
+                        OvrAvatarManager.Instance.RegisterLoadRequest(this, loadRequestId);
+                    }
+                    else
+                    {
+                        OvrAvatarLog.LogError($"Failed to load asset. {result} at path: {path}", logScope, this);
+                    }
+                }
+                OvrAvatarLog.Assert(didLoadZipAsset);
+            }
+
+            IsPendingZipAvatar = didLoadZipAsset;
+            if (didLoadZipAsset)
+            {
+                ClearFailedLoadState();
+            }
+
+            return didLoadZipAsset;
+        }
+
+        /**
+        * Load avatar assets from Unity streaming assets.
+        * @param string[]   array of strings containing asset directories
+        *                   to search relative to *Application.streamingAssetsPath*.
+        * @see LoadAssetsFromData
+        * @see LoadAssetsFromZipSource
+        */
+        protected void LoadAssetsFromStreamingAssets(string[] assetPaths)
+        {
+            if (!IsCreated)
+            {
+                OvrAvatarLog.LogError("Cannot load assets before entity has been created.", logScope, this);
+                return;
+            }
+
+            string prefix = OvrAvatarManager.IsAndroidStandalone ? $"apk://" : $"file://{Application.streamingAssetsPath}/";
+            foreach (var path in assetPaths)
+            {
+                CAPI.ovrAvatar2Result result = CAPI.OvrAvatarEntity_LoadUriWithFilters(entityId, prefix + path, _creationInfo.renderFilters, out var loadRequestId);
+                if (result.IsSuccess())
+                {
+                    ClearFailedLoadState();
+                    OvrAvatarManager.Instance.RegisterLoadRequest(this, loadRequestId);
+                }
+                else
+                {
+                    OvrAvatarLog.LogError(
+                        $"Failed to load asset from streaming assets. {result} at path: {prefix + path}"
+                        , logScope, this);
+                }
+            }
+        }
+
         private IEnumerator LoadAsync_BuildSkeletonAndPrimitives()
         {
-            Debug.Assert(IsLoading);
+            Debug.Assert(IsApplyingModels);
             OvrAvatarLog.LogVerbose($"Beginning LoadAsync_BuildSkeletonAndPrimitives", logScope, this);
 
             bool builtSkeleton = false;
@@ -286,7 +438,7 @@ namespace Oculus.Avatar2
         {
             yield return LoadAsyncCoroutine_BuildPrimitives_Internal();
 
-            yield return LoadAsync_Finalize_Internal();
+            LoadAsync_Finalize_Internal();
         }
 
         // TODO: Determine if this is worth slicing
@@ -523,7 +675,9 @@ namespace Oculus.Avatar2
             unsafe
             {
                 CAPI.ovrAvatar2Transform* jointTransform = entityPose.localTransforms + txIdx;
-
+#if OVR_AVATAR_ENABLE_CLIENT_XFORM
+                joint.transform.ApplyOvrTransform(jointTransform);
+#else
                 // HACK: Mirror rendering transforms across X to fixup coordinate system errors
                 if (joint.parentIndex == -1)
                 {
@@ -535,6 +689,7 @@ namespace Oculus.Avatar2
                 {
                     joint.transform.ApplyOvrTransform(jointTransform);
                 }
+#endif
             }
         }
 
@@ -783,7 +938,7 @@ namespace Oculus.Avatar2
             do
             {
                 OvrTime.SliceStep step = LoadSync_CheckPrimitivesLoaded_Internal(out var result);
-                if(step != OvrTime.SliceStep.Continue)
+                if (step != OvrTime.SliceStep.Continue)
                 {
                     // Unrecoverable loading error - abort
                     if (step == OvrTime.SliceStep.Cancel) { yield break; }
@@ -869,6 +1024,8 @@ namespace Oculus.Avatar2
         {
             bool hasDefaultModel = false;
             bool hasUserModel = false;
+            var wasPendingZipAvatar = IsPendingZipAvatar;
+            var wasPendingCdnAvatar = IsPendingCdnAvatar;
 
             using (var loadedAssetTypes = CAPI.OvrAvatar2Entity_GetLoadedAssetTypes_NativeArray(entityId))
             {
@@ -897,6 +1054,18 @@ namespace Oculus.Avatar2
                 }
             }
 
+            if (isLoadingFullPreset)
+            {
+                foreach (var fastLoadPreset in fastLoadPresetPaths)
+                {
+                    bool success = CAPI.OvrAvatar2Entity_UnloadUri(entityId, fastLoadPreset);
+                    OvrAvatarLog.AssertConstMessage(success
+                        , "Failed to unload fastload profile", logScope, this);
+                }
+                fastLoadPresetPaths.Clear();
+                isLoadingFullPreset = false;
+            }
+
             if (hasDefaultModel || hasUserModel)
             {
                 // Skeleton should always load before a user model or default model
@@ -917,25 +1086,40 @@ namespace Oculus.Avatar2
                 CAPI.OvrAvatar2Entity_UnloadDefaultModel(entityId);
             }
 
-            if (CurrentState < AvatarState.UserAvatar && hasUserModel)
+            if (ShouldFastLoad() && CurrentState < AvatarState.FastLoad && hasUserModel)
+            {
+                CurrentState = AvatarState.FastLoad;
+                if (wasPendingZipAvatar)
+                {
+                    LoadAssetsFromZipSource(_assetPaths, _lodFilters);
+                }
+                else if (wasPendingCdnAvatar)
+                {
+                    CAPI.OvrAvatarEntity_LoadUserWithFilters(entityId, _userId, _loadFilters, out var loadRequestId);
+                }
+                InvokeOnFastLoadAvatarLoaded();
+            }
+            else if (CurrentState < AvatarState.UserAvatar && hasUserModel)
             {
                 CurrentState = AvatarState.UserAvatar;
                 InvokeOnUserAvatarLoaded();
             }
         }
 
-        private IEnumerator LoadAsync_Finalize_Internal()
+        private void LoadAsync_Finalize_Internal()
         {
             CheckLoadedAssets();
 
-            yield return LoadAsync_Finalize();
+            LoadAsync_Finalize();
 
 #pragma warning disable 618
-            if (LoadState != LoadingState.Failed)
+            if (LoadState != LoadingState.Failed && CurrentState == AvatarState.UserAvatar)
             {
                 LoadState = LoadingState.Success;
             }
 #pragma warning restore 618
+
+            IsApplyingModels = false;
 
             // Null out the backing explicitly to avoid cancelling this coroutine
             _loadingRoutineBacking = null;
@@ -944,11 +1128,8 @@ namespace Oculus.Avatar2
             OvrAvatarManager.Instance.FinishedAvatarLoad();
         }
 
-        protected virtual IEnumerator LoadAsync_Finalize()
-        {
-            // Override for additional work once primitives are loaded
-            yield break;
-        }
+        // Override hook for additional work once primitives are loaded, but before loading is marked complete
+        protected virtual void LoadAsync_Finalize() { }
 
         private static void ReparentSkeletonJoints(SkeletonJoint[] newSkel
             , Transform baseTransform, in CAPI.ovrAvatar2Pose entityPose)
@@ -1154,7 +1335,7 @@ namespace Oculus.Avatar2
 
                         allLodTx.SetParent(_baseTransform, false);
 
-                        _visibleAllLodData = new LodData(allLodGo, 1.0f);
+                        _visibleAllLodData = new LodData(allLodGo);
                     }
 
                     // TODO: Update the lod range... but only if there are no other primitives :/
@@ -1184,7 +1365,7 @@ namespace Oculus.Avatar2
 
                             goTX.SetParent(_baseTransform, false);
 
-                            lodData = new LodData(go, primitive.coverage);
+                            lodData = new LodData(go);
 
                             lodObjectCount++;
                         }
@@ -1356,7 +1537,7 @@ namespace Oculus.Avatar2
                 {
                     OvrAvatarLog.LogWarning(
                         @"Rendering_SkinningMatrices force enabled due to Rendering_Prims being enabled.
-Needed for bounding box calculation. Consider enabling in the prefab `_creationInfo.features`");
+Needed for bounding box calculation. Consider enabling in the prefab `_creationInfo.features`", logScope, this);
                 }
             }
         }
@@ -1428,6 +1609,26 @@ Needed for bounding box calculation. Consider enabling in the prefab `_creationI
             catch (Exception e)
             {
                 OvrAvatarLog.LogException("OnDefaultAvatarLoaded user callback", e, logScope, this);
+            }
+            finally
+            {
+                Profiler.EndSample();
+            }
+        }
+
+        private void InvokeOnFastLoadAvatarLoaded()
+        {
+            OvrAvatarLog.LogInfo($"[{entityId}] OnFastLoadAvatarLoaded", logScope, this);
+
+            Profiler.BeginSample("OvrAvatarEntity::OnFastLoadAvatarLoaded Callbacks");
+            try
+            {
+                OnFastLoadAvatarLoaded();
+                OnFastLoadAvatarLoadedEvent?.Invoke(this);
+            }
+            catch (Exception e)
+            {
+                OvrAvatarLog.LogException("OnFastLoadAvatarLoaded user callback", e, logScope, this);
             }
             finally
             {

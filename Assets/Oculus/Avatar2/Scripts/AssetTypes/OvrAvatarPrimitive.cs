@@ -13,6 +13,7 @@ using Unity.Collections.LowLevel.Unsafe;
 
 using UnityEngine;
 using UnityEngine.Assertions;
+using UnityEngine.Rendering;
 using UnityEngine.Profiling;
 
 /// @file OvrAvatarPrimitive.cs
@@ -27,16 +28,12 @@ namespace Oculus.Avatar2
      * and across avatar renderables.
      * @see OvrAvatarRenderable
      */
-    public class OvrAvatarPrimitive : OvrAvatarAsset<CAPI.ovrAvatar2Primitive>
+    public sealed class OvrAvatarPrimitive : OvrAvatarAsset<CAPI.ovrAvatar2Primitive>
     {
+        private const string primitiveLogScope = "ovrAvatarPrimitive";
         //:: Internal
 
-        public const int LOD_INVALID = -1;
-        public const float LOD_COVERAGE_INVALID = -1.0f;
-        private const int LOD_COUNT = 5;
-        private static readonly float[] LOD_COVERAGE = new float[LOD_COUNT] { 0.7f, 0.5f, 0.2f, 0.1f, 0.01f };
-
-        private const string primitiveLogScope = "ovrAvatarPrimitive";
+        private const int LOD_INVALID = -1;
 
         /// Name of the asset this mesh belongs to.
         /// The asset name is established when the asset is loaded.
@@ -69,6 +66,8 @@ namespace Oculus.Avatar2
 
         /// Gets the GPU skinning version of this primitive.
         public OvrAvatarGpuSkinnedPrimitive gpuPrimitive { get; private set; } = null;
+
+        public OvrAvatarComputeSkinnedPrimitive computePrimitive { get; private set; }
 #pragma warning disable CA2213 // Disposable fields should be disposed - it is, but the linter is confused
         private OvrAvatarGpuSkinnedPrimitiveBuilder gpuPrimitiveBuilder = null;
 #pragma warning restore CA2213 // Disposable fields should be disposed
@@ -92,6 +91,7 @@ namespace Oculus.Avatar2
         /// The shader type depends on what part of the avatar is being shaded.
         ///
         public OvrAvatarShaderManagerMultiple.ShaderType shaderType { get; private set; }
+
         private OvrAvatarShaderConfiguration _shaderConfig;
 
         // MeshInfo, only tracked for cleanup on cancellation
@@ -103,7 +103,6 @@ namespace Oculus.Avatar2
 
         // TODO: A primitive can technically belong to any number of LODs with gaps in between.
         private int lod = LOD_INVALID;
-        public float coverage { get; private set; } = LOD_COVERAGE_INVALID;
 
         // TODO: Make this debug only
         public Int32[] joints;
@@ -119,6 +118,14 @@ namespace Oculus.Avatar2
         /// These are established when the primitive is loaded.
         ///
         public CAPI.ovrAvatar2EntityViewFlags viewFlags { get; private set; }
+
+        ///
+        /// If the user wants only a subset of the mesh, as specified by
+        /// indices, these flags will control which submeshes are included.
+        /// NOTE: In the current implementation all verts are downloaded,
+        /// but the indices referencing them are excluded.
+        ///
+        public CAPI.ovrAvatar2EntitySubMeshInclusionFlags subMeshInclusionFlags { get; private set; }
 
         /// True if this primitive has joints (is skinned).
         public bool HasJoints => JointCount > 0;
@@ -151,17 +158,15 @@ namespace Oculus.Avatar2
         /// True if this primitive has finished loading.
         public override bool isLoaded
         {
-            get => _allowLoadedStatus && meshLoaded && materialLoaded;
-            protected set => _allowLoadedStatus = value;
+            get => base.isLoaded && meshLoaded && materialLoaded && gpuSkinningLoaded;
         }
-        // TODO: This is equivalent to base.isLoaded - replace usage
-        private bool _allowLoadedStatus = true;
 
         // Indicates that this Primitive no longer needs access to CAPI asset data and the resource can be released
         internal bool hasCopiedAllResourceData => !(_needsMeshData || _needsMorphData || _needsImageData);
 
         // Vertex count for the entire asset buffer, may include data for multiple primitives
         private UInt32 _bufferVertexCount = UInt32.MaxValue;
+
         // Vertex count for this mesh's primitive
         private UInt32 _meshVertexCount = UInt32.MaxValue;
         private UInt32 _morphTargetCount = UInt32.MaxValue;
@@ -169,6 +174,7 @@ namespace Oculus.Avatar2
         // Task thread completion checks
         private bool meshLoaded = false;
         private bool materialLoaded = false;
+        private bool gpuSkinningLoaded = false;
 
         // Resource copy status
         private bool _needsMeshData = true;
@@ -187,11 +193,38 @@ namespace Oculus.Avatar2
         private OvrTime.SliceHandle _loadMeshAsyncSliceHandle;
         private OvrTime.SliceHandle _loadMaterialAsyncSliceHandle;
 
+        [Flags]
+        private enum VertexFormat : uint
+        {
+            VF_POSITION = 1,
+            VF_NORMAL = 2,
+            VF_TANGENT = 4,
+            VF_COLOR = 8,
+            VF_TEXCOORD0 = 16,
+            VF_COLOR_ORMT = 32,
+            VF_BONE_WEIGHTS = 64,
+            VF_BONE_INDICES = 128,
+        }
+        // This isn't really necessary since '0' is the default. The reason to include it is to make it clear which
+        // stream is being used and where to start making changes to support multiple streams.
+        private const int VF_STREAM_ID = 0;
+
+        private struct VertexBuffer
+        {
+            public VertexFormat vertexFormat;
+            public int vertexCount;
+            public int vertexStride;
+            public List<VertexAttributeDescriptor> vertexLayout;
+
+            public NativeArray<byte> vertices;
+        }
+
         // Data shared across threads
         private sealed class MeshInfo : IDisposable
         {
             // Core Mesh
             public NativeArray<Color> colors;
+            public NativeArray<Color> colorsORMT;
             public NativeArray<float> subMeshTypes;
 
             public NativeArray<Color32> meshColors;
@@ -199,6 +232,10 @@ namespace Oculus.Avatar2
             public NativeArray<UInt16> triangles;
 
             private NativeArray<Vector3> verts_;
+
+            // New vertex format.
+            public VertexBuffer vertexBuffer;
+
             // NOTE: Held during GPUPrimitiveBuilding
             public NativeArray<Vector3> verts
             {
@@ -213,6 +250,7 @@ namespace Oculus.Avatar2
 
             // NOTE: Held during GPUPrimitiveBuilding
             private NativeArray<Vector3> normals_;
+
             public NativeArray<Vector3> normals
             {
                 get => normals_;
@@ -225,12 +263,14 @@ namespace Oculus.Avatar2
 
             // NOTE: Held during GPUPrimitiveBuilding
             private NativeArray<Vector4> tangents_;
+
             public NativeArray<Vector4> tangents
             {
                 get => tangents_;
                 set
                 {
-                    tangents_ = value; pendingMeshTangents_ = true;
+                    tangents_ = value;
+                    pendingMeshTangents_ = true;
                     hasTangents = value.IsCreated && value.Length > 0;
                 }
             }
@@ -240,10 +280,15 @@ namespace Oculus.Avatar2
             // Documentation for `SetBoneWeights(NativeArray)` is... lacking
             // - https://docs.unity3d.com/ScriptReference/Mesh.SetBoneWeights.html
             private BoneWeight[] boneWeights_;
+
             public BoneWeight[] boneWeights
             {
                 get => boneWeights_;
-                set { boneWeights_ = value; pendingMeshBoneWeights_ = true; }
+                set
+                {
+                    boneWeights_ = value;
+                    pendingMeshBoneWeights_ = true;
+                }
             }
 
             // Skin
@@ -260,55 +305,85 @@ namespace Oculus.Avatar2
                 pendingNeutralPoseTex_ = vertexCount > 0;
             }
 
+            public void WillBuildComputePrimitive()
+            {
+                _pendingComputePrimitive = true;
+                _pendingNeutralPoseBuffers = vertexCount > 0;
+            }
+
             public void DidBuildGpuPrimitive()
             {
                 pendingGpuPrimitive_ = false;
-                if (!pendingNeutralPoseTex_)
-                {
-                    if (!pendingMeshVerts_) { verts_.Reset(); }
-                    if (!pendingMeshNormals_) { normals_.Reset(); }
-                    if (!pendingMeshTangents_) { tangents_.Reset(); }
-                }
-                if (!pendingMeshBoneWeights_) { boneWeights = null; }
+                if (CanResetVerts) { verts_.Reset(); }
+                if (CanResetNormals) { normals_.Reset(); }
+                if (CanResetTangents) { tangents_.Reset(); }
+                if (CanResetBoneWeights) { boneWeights = null; }
+            }
+
+            public void DidBuildComputePrimitive()
+            {
+                _pendingComputePrimitive = false;
+                if (CanResetVerts) { verts_.Reset(); }
+                if (CanResetNormals) { normals_.Reset(); }
+                if (CanResetTangents) { tangents_.Reset(); }
+                if (CanResetBoneWeights) { boneWeights = null; }
             }
 
             public void NeutralPoseTexComplete()
             {
                 pendingNeutralPoseTex_ = false;
-                if (!pendingGpuPrimitive_)
-                {
-                    if (!pendingMeshVerts_) { verts_.Reset(); }
-                    if (!pendingMeshNormals_) { normals_.Reset(); }
-                    if (!pendingMeshTangents_) { tangents_.Reset(); }
-                }
+                if (CanResetVerts) { verts_.Reset(); }
+                if (CanResetNormals) { normals_.Reset(); }
+                if (CanResetTangents) { tangents_.Reset(); }
             }
 
-            public void CancelledBuildGpuPrimitive()
+            public void NeutralPoseBuffersComplete()
+            {
+                _pendingNeutralPoseBuffers = false;
+                if (CanResetVerts) { verts_.Reset(); }
+                if (CanResetNormals) { normals_.Reset(); }
+                if (CanResetTangents) { tangents_.Reset(); }
+            }
+
+            public void CancelledBuildPrimitives()
             {
                 DidBuildGpuPrimitive();
+                DidBuildComputePrimitive();
                 NeutralPoseTexComplete();
+                NeutralPoseBuffersComplete();
             }
 
             public void MeshVertsComplete()
             {
                 pendingMeshVerts_ = false;
-                if (!pendingGpuPrimitive_ && !pendingNeutralPoseTex_) { verts_.Reset(); }
+                if (CanResetVerts) { verts_.Reset(); }
             }
+
             public void MeshNormalsComplete()
             {
                 pendingMeshNormals_ = false;
-                if (!pendingGpuPrimitive_ && !pendingNeutralPoseTex_) { normals_.Reset(); }
+                if (CanResetNormals) { normals_.Reset(); }
             }
+
             public void MeshTangentsComplete()
             {
                 pendingMeshTangents_ = false;
-                if (!pendingGpuPrimitive_ && !pendingNeutralPoseTex_) { tangents_.Reset(); }
+                if (CanResetTangents) { tangents_.Reset(); }
             }
+
             public void MeshBoneWeightsComplete()
             {
                 pendingMeshBoneWeights_ = false;
-                if (!pendingGpuPrimitive_) { boneWeights = null; }
+                if (CanResetBoneWeights) { boneWeights = null; }
             }
+
+            public bool HasPendingPrimitives => pendingGpuPrimitive_ || _pendingComputePrimitive;
+            private bool HasPendingNeutralPoses => pendingNeutralPoseTex_ || _pendingNeutralPoseBuffers;
+
+            private bool CanResetVerts => !HasPendingPrimitives && !HasPendingNeutralPoses && !pendingMeshVerts_;
+            private bool CanResetNormals => !HasPendingPrimitives && !HasPendingNeutralPoses && !pendingMeshNormals_;
+            private bool CanResetTangents => !HasPendingPrimitives && !HasPendingNeutralPoses && !pendingMeshTangents_;
+            private bool CanResetBoneWeights => !HasPendingPrimitives && !pendingMeshBoneWeights_;
 
             private bool pendingMeshVerts_ = false;
             private bool pendingMeshTangents_ = false;
@@ -319,11 +394,15 @@ namespace Oculus.Avatar2
 
             private bool pendingNeutralPoseTex_ = false;
 
+            private bool _pendingComputePrimitive = false;
+            private bool _pendingNeutralPoseBuffers = false;
+
             public void Dispose()
             {
                 Dispose(true);
                 GC.SuppressFinalize(this);
             }
+
             private void Dispose(bool isDispose)
             {
                 boneWeights = null;
@@ -337,6 +416,7 @@ namespace Oculus.Avatar2
                 texCoords.Reset();
 
                 colors.Reset();
+                colorsORMT.Reset();
                 subMeshTypes.Reset();
 
                 OvrAvatarLog.Assert(isDispose, primitiveLogScope);
@@ -360,6 +440,7 @@ namespace Oculus.Avatar2
         private struct MorphTargetInfo
         {
             public readonly string name;
+
             // TODO: Maybe make these NativeArrays too?
             public readonly Vector3[] targetPositions;
             public readonly Vector3[] targetNormals;
@@ -374,7 +455,8 @@ namespace Oculus.Avatar2
             }
         }
 
-        internal OvrAvatarPrimitive(OvrAvatarResourceLoader loader, in CAPI.ovrAvatar2Primitive primitive) : base(primitive.id, primitive)
+        internal OvrAvatarPrimitive(OvrAvatarResourceLoader loader, in CAPI.ovrAvatar2Primitive primitive) : base(
+            primitive.id, primitive)
         {
             // TODO: Can we defer this until later as well?
             mesh = new Mesh();
@@ -389,21 +471,12 @@ namespace Oculus.Avatar2
                 if (result.IsSuccess())
                 {
                     string meshPrimitiveName = Marshal.PtrToStringAnsi((IntPtr)nameBuffer);
-                    if (!string.IsNullOrEmpty(meshPrimitiveName))
-                    {
-                        name = meshPrimitiveName;
-                    }
+                    if (!string.IsNullOrEmpty(meshPrimitiveName)) { name = meshPrimitiveName; }
                 }
-                else
-                {
-                    OvrAvatarLog.LogWarning($"GetPrimitiveName {result}", primitiveLogScope);
-                }
+                else { OvrAvatarLog.LogWarning($"GetPrimitiveName {result}", primitiveLogScope); }
             }
 
-            if (name == null)
-            {
-                name = "Mesh" + primitive.id;
-            }
+            if (name == null) { name = "Mesh" + primitive.id; }
 
             mesh.name = name;
             shortName = name.Replace("Primitive", "p");
@@ -411,6 +484,7 @@ namespace Oculus.Avatar2
 
         // Must *not* be called more than once
         private bool _startedLoad = false;
+
         internal void StartLoad(OvrAvatarResourceLoader loader)
         {
             Debug.Assert(!_startedLoad);
@@ -427,9 +501,17 @@ namespace Oculus.Avatar2
                 _needsMeshData = false;
             }
 
-            var morphResult =
-                CAPI.ovrAvatar2VertexBuffer_GetMorphTargetCount(data.morphTargetBufferId, out _morphTargetCount);
-            if (!morphResult.EnsureSuccess("ovrAvatar2VertexBuffer_GetMorphTargetCount", primitiveLogScope))
+            var morphResult = CAPI.ovrAvatar2Result.Unknown;
+            //primitives might not have a morph target
+            if (data.morphTargetBufferId != CAPI.ovrAvatar2MorphTargetBufferId.Invalid)
+            {
+                morphResult =
+                    CAPI.ovrAvatar2VertexBuffer_GetMorphTargetCount(data.morphTargetBufferId, out _morphTargetCount);
+                //but if they do, then getting the ocunt shouldn't fail
+                morphResult.EnsureSuccess("ovrAvatar2VertexBuffer_GetMorphTargetCount", primitiveLogScope);
+            }
+
+            if (morphResult.IsFailure())
             {
                 _morphTargetCount = 0;
                 _needsMorphData = false;
@@ -437,10 +519,22 @@ namespace Oculus.Avatar2
 
             _loadMeshAsyncSliceHandle = OvrTime.Slice(LoadMeshAsync());
             _loadMaterialAsyncSliceHandle = OvrTime.Slice(LoadMaterialAsync(loader, loader.resourceId));
+
+            // there are additional flags which will be set before publicly reporting `isLoaded`
+            base.isLoaded = true;
         }
 
-        private void _CleanupCancellationToken()
+        private bool _CanCleanupCancellationToken =>
+            !_loadMeshAsyncSliceHandle.IsValid && !_loadMaterialAsyncSliceHandle.IsValid;
+
+        private void _TryCleanupCancellationToken()
         {
+            if (!_CanCleanupCancellationToken)
+            {
+                // Cancellation called while timesliced operations in progress
+                return;
+            }
+
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
         }
@@ -461,16 +555,30 @@ namespace Oculus.Avatar2
                     }
                     else
                     {
-                        OvrAvatarLog.LogDebug($"Cancelled Task {task} is still running",
+                        OvrAvatarLog.LogDebug(
+                            $"Cancelled Task {task} is still running",
                             primitiveLogScope);
                         allCancelled = false;
                     }
                 }
             }
 
-            if (allCancelled && _apiTasks.Length > 0)
+            if (allCancelled && _apiTasks.Length > 0) { _apiTasks = Array.Empty<Task>(); }
+
+            if (_texturesDataTask != null)
             {
-                _apiTasks = Array.Empty<Task>();
+                if (_texturesDataTask.IsCompleted)
+                {
+                    _texturesDataTask.Dispose();
+                    _texturesDataTask = null;
+                }
+                else
+                {
+                    OvrAvatarLog.LogError(
+                        $"Cancelled Task {_texturesDataTask} is still running",
+                        primitiveLogScope);
+                    allCancelled = false;
+                }
             }
 
             return allCancelled;
@@ -496,6 +604,13 @@ namespace Oculus.Avatar2
                 OvrAvatarLog.Assert(didCancel, primitiveLogScope);
             }
 
+            if (_loadMaterialAsyncSliceHandle.IsValid)
+            {
+                OvrAvatarLog.LogDebug($"Stopping LoadMaterialAsync slice {shortName}", primitiveLogScope);
+                bool didCancel = _loadMaterialAsyncSliceHandle.Cancel();
+                OvrAvatarLog.Assert(didCancel, primitiveLogScope);
+            }
+
             if (AreAllTasksCancelled())
             {
                 _FinishCancel();
@@ -511,10 +626,7 @@ namespace Oculus.Avatar2
         private IEnumerator<OvrTime.SliceStep> _WaitForCancellation()
         {
             // Wait for all tasks to complete before proceeding with cleanup
-            while (!AreAllTasksCancelled())
-            {
-                yield return OvrTime.SliceStep.Delay;
-            }
+            while (!AreAllTasksCancelled()) { yield return OvrTime.SliceStep.Delay; }
 
             // Finish cancellation, Dispose of Tasks and Tokens
             _FinishCancel();
@@ -533,14 +645,8 @@ namespace Oculus.Avatar2
                 gpuPrimitiveBuilder = null;
             }
 
-            if (_loadMaterialAsyncSliceHandle.IsValid)
-            {
-                OvrAvatarLog.LogDebug($"Stopping LoadMaterialAsync slice {shortName}", primitiveLogScope);
-                _loadMaterialAsyncSliceHandle.Cancel();
-            }
-
             _needsImageData = _needsMeshData = _needsMorphData = false;
-            _CleanupCancellationToken();
+            _TryCleanupCancellationToken();
         }
 
         protected override void Dispose(bool disposing)
@@ -550,14 +656,12 @@ namespace Oculus.Avatar2
 
             if (!(mesh is null))
             {
-                if (disposing)
-                {
-                    Mesh.Destroy(mesh);
-                }
+                if (disposing) { Mesh.Destroy(mesh); }
                 else
                 {
                     OvrAvatarLog.LogError(
-                        $"Mesh asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized");
+                        $"Mesh asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized",
+                        primitiveLogScope);
                 }
 
                 mesh = null;
@@ -565,14 +669,12 @@ namespace Oculus.Avatar2
 
             if (!(material is null))
             {
-                if (disposing)
-                {
-                    Material.Destroy(material);
-                }
+                if (disposing) { Material.Destroy(material); }
                 else
                 {
                     OvrAvatarLog.LogError(
-                        $"Material asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized");
+                        $"Material asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized",
+                        primitiveLogScope);
                 }
 
                 material = null;
@@ -580,17 +682,30 @@ namespace Oculus.Avatar2
 
             if (!(gpuPrimitive is null))
             {
-                if (disposing)
-                {
-                    gpuPrimitive.Dispose();
-                }
+                if (disposing) { gpuPrimitive.Dispose(); }
                 else
                 {
                     OvrAvatarLog.LogError(
-                        $"OvrAvatarGPUSkinnedPrimitive asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized");
+                        $"OvrAvatarGPUSkinnedPrimitive asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized"
+                        ,
+                        primitiveLogScope);
                 }
 
                 gpuPrimitive = null;
+            }
+
+            if (!(computePrimitive is null))
+            {
+                if (disposing) { computePrimitive.Dispose(); }
+                else
+                {
+                    OvrAvatarLog.LogError(
+                        $"OvrAvatarComputeSkinnedPrimitive asset was not destroyed before OvrAvatarPrimitive ({name}, {assetId}) was finalized"
+                        ,
+                        primitiveLogScope);
+                }
+
+                computePrimitive = null;
             }
 
             _meshInfo?.Dispose();
@@ -613,6 +728,7 @@ namespace Oculus.Avatar2
             GetLodInfo();
             GetManifestationInfo();
             GetViewInfo();
+            GetSubMeshInclusionInfo();
 
             // load triangles
             // load mesh & morph targets
@@ -621,6 +737,7 @@ namespace Oculus.Avatar2
             var meshLodInfo = new MeshLodInfo();
 
             var gpuSkinning = OvrAvatarManager.Instance.OvrGPUSkinnerSupported;
+            var computeSkinning = OvrAvatarManager.Instance.OvrComputeSkinnerSupported;
             var setupSkin = data.jointCount > 0;
 
             _meshInfo = new MeshInfo();
@@ -631,10 +748,7 @@ namespace Oculus.Avatar2
             // for now, all tasks are "CAPI" tasks
             _apiTasks = tasks;
 
-            tasks[0] = Task.Run(() =>
-            {
-                RetrieveTriangles(meshLodInfo, _meshInfo);
-            });
+            tasks[0] = Task.Run(() => { RetrieveTriangles(meshLodInfo, _meshInfo); });
             if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
             var tasksAfterTriangles = new Task[morphTargetCount > 0 ? 2 : 1];
@@ -642,15 +756,13 @@ namespace Oculus.Avatar2
                 tasks[0].ContinueWith(antecedent => RetrieveMeshData(_meshInfo, in meshLodInfo.repacker));
             if (morphTargetCount > 0)
             {
-                tasksAfterTriangles[1] = tasks[0].ContinueWith(antecedent =>
-                    SetupMorphTargets(morphTargetInfo, in meshLodInfo.repacker));
+                tasksAfterTriangles[1] = tasks[0].ContinueWith(
+                    antecedent =>
+                        SetupMorphTargets(morphTargetInfo, in meshLodInfo.repacker));
             }
 
             tasks[1] = Task.WhenAll(tasksAfterTriangles);
-            if (OvrTime.ShouldHold)
-            {
-                yield return OvrTime.SliceStep.Hold;
-            }
+            if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
             if (setupSkin)
             {
@@ -661,20 +773,19 @@ namespace Oculus.Avatar2
                 joints = Array.Empty<int>();
             }
 
-            if (gpuSkinning)
+            if (gpuSkinning || computeSkinning)
             {
-                if (OvrTime.ShouldHold)
-                {
-                    yield return OvrTime.SliceStep.Hold;
-                }
+                if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
                 gpuPrimitiveBuilder = new OvrAvatarGpuSkinnedPrimitiveBuilder(shortName, morphTargetCount);
             }
-
-            if (OvrTime.ShouldHold)
+            else
             {
-                yield return OvrTime.SliceStep.Hold;
+                // Don't need to wait for gpu skinning
+                gpuSkinningLoaded = true;
             }
+
+            if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
             CAPI.ovrAvatar2Vector3f minPos;
             CAPI.ovrAvatar2Vector3f maxPos;
@@ -698,10 +809,7 @@ namespace Oculus.Avatar2
                 hasBounds = true;
             }
 
-            if (OvrTime.ShouldHold)
-            {
-                yield return OvrTime.SliceStep.Hold;
-            }
+            if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
             while (!AllTasksFinished(tasks))
             {
@@ -729,13 +837,14 @@ namespace Oculus.Avatar2
                 if (gpuPrimitiveBuilder != null)
                 {
                     Array.Resize(ref tasks, 1);
-                    tasks[0] = gpuPrimitiveBuilder.CreateGpuPrimitiveHelperTask(_meshInfo, morphTargetInfo, joints,
-                        hasTangents);
+                    tasks[0] = gpuPrimitiveBuilder.CreateSkinningPrimitivesHelperTask(
+                        _meshInfo,
+                        morphTargetInfo,
+                        hasTangents,
+                        gpuSkinning,
+                        computeSkinning);
 
-                    if (OvrTime.ShouldHold)
-                    {
-                        yield return OvrTime.SliceStep.Hold;
-                    }
+                    if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
                 }
                 else
                 {
@@ -747,29 +856,33 @@ namespace Oculus.Avatar2
 
                 // Apply mesh info on main thread
                 if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
-                mesh.SetVertices(_meshInfo.verts);
-                _meshInfo.MeshVertsComplete();
 
-                // if we extracted colors or submesh types from the midel put them into the final mesh
-                // pack the submesh type into the vertexcolor alpha because no parts of the avatars use alpha
+                // Create a vertex buffer using the format and stride.
+                CreateVertexBuffer(_meshInfo);
+
+                if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
+
+                // Set the mesh vertex buffer parameters from the vertex buffer created above.
+                // Note: final vertex buffer data is not set until the finalized below.
+                var vertexBuffer = _meshInfo.vertexBuffer;
+                mesh.SetVertexBufferParams(vertexBuffer.vertexCount, vertexBuffer.vertexLayout.ToArray());
+
+                // if we extracted colors or submesh types from the model put them into the final mesh
+                // pack the submesh type into the vertex color alpha because no parts of the avatars use alpha
                 if (_meshInfo.colors.Length > 0 || _meshInfo.subMeshTypes.Length > 0)
                 {
                     if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
                     // TODO: Move into Task, `AssembleMeshColors` can all be done async
                     AssembleMeshColors(_meshInfo);
-
-                    if (_meshInfo.meshColors.Length > 0)
-                    {
-                        if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
-                        mesh.SetColors(_meshInfo.meshColors);
-                    }
-                    _meshInfo.meshColors.Reset();
                 }
 
                 if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
-                mesh.SetUVs(0, _meshInfo.texCoords);
-                _meshInfo.texCoords.Reset();
+                StripExcludedSubMeshes(ref _meshInfo.triangles);
+
+                // get number of submeshes
+                // foreach submesh, check to see if it is included
+                // if it is not, then remove this range from the index buffer
 
                 if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
                 mesh.SetIndices(_meshInfo.triangles, MeshTopology.Triangles, 0, !hasBounds, 0);
@@ -778,24 +891,10 @@ namespace Oculus.Avatar2
                 // When UnitySMR is supported, include extra animation data
                 if (OvrAvatarManager.Instance.UnitySMRSupported)
                 {
-                    if (_meshInfo.hasTangents)
-                    {
-                        if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
-                        mesh.SetTangents(_meshInfo.tangents);
-                        _meshInfo.MeshTangentsComplete();
-                    }
-
-                    if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
-                    mesh.SetNormals(_meshInfo.normals);
-                    _meshInfo.MeshNormalsComplete();
-
                     if (setupSkin)
                     {
                         if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
-                        mesh.boneWeights = _meshInfo.boneWeights;
-                        _meshInfo.MeshBoneWeightsComplete();
 
-                        if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
                         mesh.bindposes = _meshInfo.bindPoses;
                         _meshInfo.bindPoses = null;
                     }
@@ -804,51 +903,81 @@ namespace Oculus.Avatar2
                     {
                         if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
-                        mesh.AddBlendShapeFrame(morphTarget.name, 1, morphTarget.targetPositions,
-                            morphTarget.targetNormals, morphTarget.targetTangents);
+                        mesh.AddBlendShapeFrame(
+                            morphTarget.name,
+                            1,
+                            morphTarget.targetPositions,
+                            morphTarget.targetNormals,
+                            morphTarget.targetTangents);
                     }
                 }
 
-                // TODO: Stall
-                if (OvrTime.ShouldHold)
-                {
-                    yield return OvrTime.SliceStep.Hold;
-                }
+                if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
+                // Vertex buffer data.
+                // Copy the vertex data into the vertex buffer array.
+                CopyMeshDataIntoVertexBuffer(_meshInfo);
+                if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
+
+                // Call the mesh loaded callback before the native arrays are reset.
+                InvokeOnMeshLoaded(mesh, _meshInfo);
+                if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
+
+                // Resets, these were peppered through the code above, but we needed the data to persist until the
+                // copy above was called.
+                _meshInfo.MeshVertsComplete();
+                _meshInfo.meshColors.Reset();
+                _meshInfo.texCoords.Reset();
+                _meshInfo.colorsORMT.Reset();
+                _meshInfo.MeshTangentsComplete();
+                _meshInfo.MeshNormalsComplete();
+                _meshInfo.MeshBoneWeightsComplete();
+
+                // Upload vertex data to the mesh.
+                mesh.SetVertexBufferData(vertexBuffer.vertices, 0, 0,
+                    vertexBuffer.vertexCount * vertexBuffer.vertexStride, VF_STREAM_ID);
                 mesh.UploadMeshData(true);
+                // Mark the CPU vertex data as disposable.
+                DisposeVertexBuffer(_meshInfo);
 
                 // It seems that almost every vert data assignment will recalculate (and override) bounds - excellent engine...
                 // So, we must delay this to the very end for no logical reason
                 if (sdkBounds.HasValue)
                 {
-                    if (OvrTime.ShouldHold)
-                    {
-                        yield return OvrTime.SliceStep.Hold;
-                    }
+                    if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
                     mesh.bounds = sdkBounds.Value;
                 }
 
                 if (gpuPrimitiveBuilder != null)
                 {
-                    if (OvrTime.ShouldHold)
-                    {
-                        yield return OvrTime.SliceStep.Hold;
-                    }
+                    if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
                     // TODO: This is not ideal timing for this operation, but it does minimize disruption in this file which is key right now 3/3/2021
                     // - As of now, there really isn't any meaningful work that can be done off the main thread - pending D26787881
-                    while (!AllTasksFinished(tasks))
+                    while (!AllTasksFinished(tasks)) { yield return OvrTime.SliceStep.Delay; }
+
+                    // Main thread operations (currently almost all of it), sliced as best possible
+                    if (gpuSkinning)
+                    {
+                        Profiler.BeginSample("Build GPUPrimitive");
+                        gpuPrimitive = gpuPrimitiveBuilder.BuildPrimitive(_meshInfo, joints, hasTangents);
+                        Profiler.EndSample();
+                    }
+
+                    if (computeSkinning)
+                    {
+                        Profiler.BeginSample("Build ComputePrimitive");
+                        computePrimitive = gpuPrimitiveBuilder.BuildComputePrimitive(_meshInfo, hasTangents);
+                        Profiler.EndSample();
+                    }
+
+                    while (gpuPrimitive != null && gpuPrimitive.IsLoading)
                     {
                         yield return OvrTime.SliceStep.Delay;
                     }
 
-                    // Main thread operations (currently almost all of it), sliced as best possible
-                    Profiler.BeginSample("Build GPUPrimitive");
-                    gpuPrimitive = gpuPrimitiveBuilder.BuildPrimitive(_meshInfo, joints, hasTangents);
-                    Profiler.EndSample();
-
-                    while (gpuPrimitive.IsLoading)
+                    while (computePrimitive != null && computePrimitive.IsLoading)
                     {
                         yield return OvrTime.SliceStep.Delay;
                     }
@@ -857,6 +986,12 @@ namespace Oculus.Avatar2
                     {
                         _morphTargetCount = 0;
                     }
+                    else if (computePrimitive != null && computePrimitive.SourceMetaData.numMorphedVerts == 0)
+                    {
+                        _morphTargetCount = 0;
+                    }
+
+                    gpuSkinningLoaded = true;
 
                     gpuPrimitiveBuilder.Dispose();
                     gpuPrimitiveBuilder = null;
@@ -875,45 +1010,42 @@ namespace Oculus.Avatar2
                 // Log errors from Tasks
                 foreach (var task in tasks)
                 {
-                    if (task.Status == TaskStatus.Faulted)
-                    {
-                        LogTaskErrors(task);
-                    }
+                    if (task.Status == TaskStatus.Faulted) { LogTaskErrors(task); }
                 }
             }
 
             _loadMeshAsyncSliceHandle.Clear();
-            _CleanupCancellationToken();
+            _TryCleanupCancellationToken();
         }
+
+        private Task _texturesDataTask = null;
 
         private IEnumerator<OvrTime.SliceStep> LoadMaterialAsync(OvrAvatarResourceLoader loader,
             CAPI.ovrAvatar2Id resourceId)
         {
             // Info to pass between threads
-            MaterialInfo materialInfo = new MaterialInfo();
+            var materialInfo = new MaterialInfo();
 
             // Marshal texture data on separate thread
-            Task texturesDataTask = Task.Run(() => Material_GetTexturesData(resourceId, ref materialInfo));
-            while (WaitForTask(texturesDataTask, out var step))
+            _texturesDataTask = Task.Run(() => Material_GetTexturesData(resourceId, ref materialInfo));
+            while (WaitForTask(_texturesDataTask, out var step))
             {
                 yield return step;
             }
+
+            _texturesDataTask = null;
 
             // The rest, unfortunately, must be on the main thread
             _needsImageData = !(materialInfo.texturesData is null) && !(materialInfo.imageData is null);
             if (_needsImageData)
             {
                 // Check for images needed by this material. Request image loads on main thread and wait for them.
-                int numTextures = materialInfo.texturesData.Length;
                 uint numImages = (uint)materialInfo.imageData.Length;
                 var images = new OvrAvatarImage[(int)numImages];
 
                 for (uint imgIdx = 0; imgIdx < numImages; ++imgIdx)
                 {
-                    if (OvrTime.ShouldHold)
-                    {
-                        yield return OvrTime.SliceStep.Hold;
-                    }
+                    if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
                     FindTexture(loader, materialInfo, images, imgIdx, resourceId);
                 }
@@ -925,6 +1057,8 @@ namespace Oculus.Avatar2
                 // Wait until all images are fully loaded
                 foreach (var image in images)
                 {
+                    if (image == null) { continue; }
+
                     while (!image.isLoaded)
                     {
                         if (!image.isCancelled)
@@ -934,7 +1068,8 @@ namespace Oculus.Avatar2
                         }
                         else // isCancelled
                         {
-                            OvrAvatarLog.LogVerbose($"Image {image} cancelled during resource load.",
+                            OvrAvatarLog.LogVerbose(
+                                $"Image {image} cancelled during resource load.",
                                 primitiveLogScope);
 
                             // Resume checking next frame
@@ -948,22 +1083,21 @@ namespace Oculus.Avatar2
                 }
             }
 
-            if (OvrTime.ShouldHold)
-            {
-                yield return OvrTime.SliceStep.Hold;
-            }
+            if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
             // Configure shader manager and create material
             if (OvrAvatarManager.Instance == null || OvrAvatarManager.Instance.ShaderManager == null)
             {
                 OvrAvatarLog.LogError(
-                    $"ShaderManager must be initilized so that a shader can be specified to genrate Avatar primitive materials.");
+                    $"ShaderManager must be initialized so that a shader can be specified to generate Avatar primitive materials.");
             }
             else
             {
+                bool hasTextures = materialInfo.texturesData != null && materialInfo.texturesData.Length > 0;
                 shaderType =
-                    OvrAvatarManager.Instance.ShaderManager.DetermineConfiguration(name, materialInfo.hasMetallic,
-                        false);
+                    OvrAvatarManager.Instance.ShaderManager.DetermineConfiguration(
+                        name, materialInfo.hasMetallic,
+                        false, hasTextures);
                 _shaderConfig = OvrAvatarManager.Instance.ShaderManager.GetConfiguration(shaderType);
             }
 
@@ -973,15 +1107,9 @@ namespace Oculus.Avatar2
                 yield break;
             }
 
-            if (OvrTime.ShouldHold)
-            {
-                yield return OvrTime.SliceStep.Hold;
-            }
+            if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
-            if (_shaderConfig.Material != null)
-            {
-                material = new Material(_shaderConfig.Material);
-            }
+            if (_shaderConfig.Material != null) { material = new Material(_shaderConfig.Material); }
             else
             {
                 var shader = _shaderConfig.Shader;
@@ -1000,10 +1128,7 @@ namespace Oculus.Avatar2
             // Create and apply textures
             foreach (var textureData in materialInfo.texturesData)
             {
-                if (OvrTime.ShouldHold)
-                {
-                    yield return OvrTime.SliceStep.Hold;
-                }
+                if (OvrTime.ShouldHold) { yield return OvrTime.SliceStep.Hold; }
 
                 // Find corresponding image
                 if (OvrAvatarManager.GetOvrAvatarAsset(textureData.imageId, out OvrAvatarImage image))
@@ -1024,8 +1149,44 @@ namespace Oculus.Avatar2
                 _shaderConfig.ApplyFloatConstants(material);
             }
 
+            LoadAndApplyExtensions();
+
             materialLoaded = true;
             _loadMaterialAsyncSliceHandle.Clear();
+            _TryCleanupCancellationToken();
+        }
+
+        private bool LoadAndApplyExtensions()
+        {
+            var result = CAPI.ovrAvatar2Primitive_GetNumMaterialExtensions(assetId, out uint numExtensions);
+            if (!result.IsSuccess())
+            {
+                OvrAvatarLog.LogError(
+                    $"GetNumMaterialExtensions assetId:{assetId}, result:{result}"
+                    , primitiveLogScope);
+                return false;
+            }
+
+            bool success = true;
+            for (uint extensionIdx = 0; extensionIdx < numExtensions; extensionIdx++)
+            {
+                if (OvrAvatarMaterialExtension.LoadExtension(
+                        assetId,
+                        extensionIdx,
+                        out var extension))
+                {
+                    extension.ApplyEntriesToMaterial(material, _shaderConfig.ExtensionConfiguration);
+                }
+                else
+                {
+                    OvrAvatarLog.LogWarning(
+                        $"Unable to load material extension at index {extensionIdx} for assetId:{assetId}",
+                        primitiveLogScope);
+                    success = false;
+                }
+            }
+
+            return success;
         }
 
         private bool WaitForTask(Task task, out OvrTime.SliceStep step)
@@ -1072,10 +1233,7 @@ namespace Oculus.Avatar2
         {
             foreach (Task task in tasks)
             {
-                if (task.Status == TaskStatus.Faulted)
-                {
-                    return true;
-                }
+                if (task.Status == TaskStatus.Faulted) { return true; }
             }
 
             return false;
@@ -1101,7 +1259,8 @@ namespace Oculus.Avatar2
 
                 if (textureData.imageId == imageData.id)
                 {
-                    OvrAvatarLog.LogVerbose($"Found match for image index {imageIndex} to texture index {texIdx}",
+                    OvrAvatarLog.LogVerbose(
+                        $"Found match for image index {imageIndex} to texture index {texIdx}",
                         primitiveLogScope);
                     // Resolve the image now.
                     OvrAvatarImage image;
@@ -1111,19 +1270,68 @@ namespace Oculus.Avatar2
                         image = loader.CreateImage(in textureData, in imageData, imageIndex, resourceId);
                     }
 
+                    OvrAvatarLog.Assert(image != null, primitiveLogScope);
                     images[imageIndex] = image;
 
                     break;
                 }
             }
+
+            if (images[imageIndex] == null)
+            {
+                OvrAvatarLog.LogWarning($"Failed to find textures data for image {imageData.id}", primitiveLogScope);
+                // TODO: Assign some sort of fallback image?
+            }
         }
 
         #endregion
 
+        private void StripExcludedSubMeshes(ref NativeArray<ushort> triangles)
+        {
+            var ct = _cancellationTokenSource.Token;
+            ct.ThrowIfCancellationRequested();
+
+            if (subMeshInclusionFlags != CAPI.ovrAvatar2EntitySubMeshInclusionFlags.All)
+            {
+                uint subMeshCount = 0;
+                var countResult = CAPI.ovrAvatar2Primitive_GetSubMeshCount(assetId, out subMeshCount);
+                ct.ThrowIfCancellationRequested();
+                if (countResult.IsSuccess())
+                {
+                    unsafe
+                    {
+                        for (uint subMeshIndex = 0; subMeshIndex < subMeshCount; subMeshIndex++)
+                        {
+                            CAPI.ovrAvatar2PrimitiveSubmesh subMesh;
+                            var subMeshResult =
+                                CAPI.ovrAvatar2Primitive_GetSubMeshByIndex(assetId, subMeshIndex, out subMesh);
+                            ct.ThrowIfCancellationRequested();
+                            if (subMeshResult.IsSuccess())
+                            {
+                                // TODO this should honor the _activeSubMeshesIncludeUntyped flag
+                                // ^ This is not possible as that is an OvrAvatarEntity flag
+                                var inclusionType = subMesh.inclusionFlags;
+                                if ((inclusionType & subMeshInclusionFlags) == 0 &&
+                                    inclusionType != CAPI.ovrAvatar2EntitySubMeshInclusionFlags.None)
+                                {
+                                    uint triangleIndex = subMesh.indexStart;
+                                    for (uint triangleCount = 0; triangleCount < subMesh.indexCount; triangleCount++)
+                                    {
+                                        // current strategy is to degenerate the triangle...
+                                        int triangleBase = (int)(triangleIndex + triangleCount);
+                                        triangles[triangleBase] = 0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         private void GetLodInfo()
         {
             lod = LOD_INVALID;
-            coverage = LOD_COVERAGE_INVALID;
 
             var result = CAPI.ovrAvatar2Asset_GetLodFlags(assetId, out var lodFlag);
             if (result.IsSuccess())
@@ -1140,7 +1348,6 @@ namespace Oculus.Avatar2
                     if ((flagValue & maskValue) != 0)
                     {
                         lod = i;
-                        coverage = LOD_COVERAGE[lod];
                         break;
                     }
 
@@ -1175,6 +1382,225 @@ namespace Oculus.Avatar2
             }
         }
 
+        private void GetSubMeshInclusionInfo()
+        {
+            // sub mesh inclusion flags used at this stage will work as load filters,
+            // they must be specified in the creationInfo of the AvatarEntity before loading.
+            var result = CAPI.ovrAvatar2Asset_GetSubMeshInclusionFlags(assetId, out var flags);
+            if (result.IsSuccess())
+            {
+                subMeshInclusionFlags = flags;
+            }
+            else
+            {
+                OvrAvatarLog.LogWarning($"GetManifestationFlags Failed: {result}", primitiveLogScope);
+            }
+        }
+
+        /////////////////////////////////////////////////
+        //:: Vertex Buffer API
+        // TODO: Factor out into its own file, currently meshInfo access is required for that.
+
+        private void CreateVertexBuffer(MeshInfo meshInfo)
+        {
+            // Apply mesh info on main thread
+            // Get the vertex format information from the fetched vertex data.
+            // We need to build a dynamic layout based on the actual data present.
+            var vertexCount = (int)meshInfo.vertexCount;
+            var vertexFormat = GetVertexFormat(meshInfo, out var vertexStride);
+            var vertexSizeInBytes = vertexStride * vertexCount;
+
+            // Create a vertex buffer using the format and stride.
+            meshInfo.vertexBuffer = new VertexBuffer
+            {
+                vertexFormat = vertexFormat,
+                vertexLayout = CreateVertexLayout(vertexFormat),
+                vertexCount = vertexCount,
+                vertexStride = vertexStride,
+                vertices = new NativeArray<byte>(vertexSizeInBytes, _nativeAllocator, _nativeArrayInit),
+            };
+        }
+
+        private VertexFormat GetVertexFormat(MeshInfo meshInfo, out int vertexStride)
+        {
+            // TODO: Support different attribute formats rather than hardcoding them. This will be useful for quantizing
+            // vertex data to reduce vertex shader read bandwidth.
+            // TODO: Use constants for vector and color sizes.
+            VertexFormat vertexFormat = VertexFormat.VF_POSITION;
+            vertexStride = 3 * sizeof(float);   // assume that all vertex formats have a position.
+            if (OvrAvatarManager.Instance.UnitySMRSupported)
+            {
+                if (meshInfo.normals.Length > 0)
+                {
+                    vertexFormat |= VertexFormat.VF_NORMAL;
+                    vertexStride += 3 * sizeof(float);
+                }
+                if (meshInfo.hasTangents && meshInfo.tangents.Length > 0)
+                {
+                    vertexFormat |= VertexFormat.VF_TANGENT;
+                    vertexStride += 4 * sizeof(float);
+                }
+            }
+
+            if (meshInfo.colors.Length > 0 || meshInfo.subMeshTypes.Length > 0)
+            {
+                vertexFormat |= VertexFormat.VF_COLOR;
+                vertexStride += 4;
+            }
+            if (meshInfo.texCoords.Length > 0)
+            {
+                vertexFormat |= VertexFormat.VF_TEXCOORD0;
+                vertexStride += 2 * sizeof(float);
+            }
+            if (meshInfo.colorsORMT.Length > 0)
+            {
+                vertexFormat |= VertexFormat.VF_COLOR_ORMT;
+                vertexStride += 4 * sizeof(float);
+            }
+            if (data.jointCount > 0 && OvrAvatarManager.Instance.UnitySMRSupported)
+            {
+                vertexFormat |= (VertexFormat.VF_BONE_WEIGHTS | VertexFormat.VF_BONE_INDICES);
+                vertexStride += 4 * sizeof(float);    // weights
+                vertexStride += 4;    // bone indices
+            }
+
+            OvrAvatarLog.LogVerbose($"Vertex Format = {vertexFormat}, Stride = {vertexStride}", primitiveLogScope);
+            return vertexFormat;
+        }
+
+        private List<VertexAttributeDescriptor> CreateVertexLayout(VertexFormat format)
+        {
+            // TODO: Support different attribute formats rather than hardcoding them. This will be useful for quantizing
+            // vertex data to reduce vertex shader read bandwidth.
+            var vertexLayout = new List<VertexAttributeDescriptor>();
+            // Note: Unity expects vertex attributes to exist in a specific order, any deviation causes an error.
+            // Order: Position, Normal, Tangent, Color, TexCoord0, TexCoord1, ..., BlendWeights, BlendIndices
+            if ((format & VertexFormat.VF_POSITION) == VertexFormat.VF_POSITION)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32,
+                    3, VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_NORMAL) == VertexFormat.VF_NORMAL)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3,
+                    VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_TANGENT) == VertexFormat.VF_TANGENT)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.Tangent, VertexAttributeFormat.Float32,
+                    4, VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_COLOR) == VertexFormat.VF_COLOR)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.UNorm8, 4,
+                    VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_TEXCOORD0) == VertexFormat.VF_TEXCOORD0)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32,
+                    2, VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_COLOR_ORMT) == VertexFormat.VF_COLOR_ORMT)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32,
+                    4, VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_BONE_WEIGHTS) == VertexFormat.VF_BONE_WEIGHTS)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.BlendWeight,
+                    VertexAttributeFormat.Float32, 4, VF_STREAM_ID));
+            }
+            if ((format & VertexFormat.VF_BONE_INDICES) == VertexFormat.VF_BONE_INDICES)
+            {
+                vertexLayout.Add(new VertexAttributeDescriptor(VertexAttribute.BlendIndices,
+                    VertexAttributeFormat.UInt8, 4, VF_STREAM_ID));
+            }
+
+            return vertexLayout;
+        }
+
+        private void CopyMeshDataIntoVertexBuffer(MeshInfo meshInfo)
+        {
+            var vertexBuffer = meshInfo.vertexBuffer;
+            var vertexFormat = vertexBuffer.vertexFormat;
+            var vertexStride = vertexBuffer.vertexStride;
+
+            unsafe
+            {
+                var vertices = vertexBuffer.vertices.GetPtr();
+                for (int i = 0; i < vertexBuffer.vertexCount; i++)
+                {
+                    byte* outBuffer = &vertices[vertexStride * i];
+                    int offset = 0;
+                    if ((vertexFormat & VertexFormat.VF_POSITION) == VertexFormat.VF_POSITION)
+                    {
+                        Vector3* outPos = (Vector3*)&outBuffer[offset];
+                        *outPos = meshInfo.verts[i];
+                        offset += 3 * sizeof(float);
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_NORMAL) == VertexFormat.VF_NORMAL)
+                    {
+                        Vector3* outNrm = (Vector3*)&outBuffer[offset];
+                        *outNrm = meshInfo.normals[i];
+                        offset += 3 * sizeof(float);
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_TANGENT) == VertexFormat.VF_TANGENT)
+                    {
+                        Vector4* outTangent = (Vector4*)&outBuffer[offset];
+                        *outTangent = meshInfo.tangents[i];
+                        offset += 4 * sizeof(float);
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_COLOR) == VertexFormat.VF_COLOR)
+                    {
+                        Color32* outColor = (Color32*)&outBuffer[offset];
+                        *outColor = meshInfo.meshColors[i];
+                        offset += 4;
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_TEXCOORD0) == VertexFormat.VF_TEXCOORD0)
+                    {
+                        Vector2* outUv = (Vector2*)&outBuffer[offset];
+                        *outUv = meshInfo.texCoords[i];
+                        offset += 2 * sizeof(float);
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_COLOR_ORMT) == VertexFormat.VF_COLOR_ORMT)
+                    {
+                        Vector4* outColor = (Vector4*)&outBuffer[offset];
+                        *outColor = meshInfo.colorsORMT[i];
+                        offset += 4 * sizeof(float);
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_BONE_WEIGHTS) == VertexFormat.VF_BONE_WEIGHTS)
+                    {
+                        Vector4* outWeights = (Vector4*)&outBuffer[offset];
+                        *outWeights = new Vector4(
+                            meshInfo.boneWeights[i].weight0, meshInfo.boneWeights[i].weight1,
+                            meshInfo.boneWeights[i].weight2, meshInfo.boneWeights[i].weight3);
+                        offset += 4 * sizeof(float);
+                    }
+
+                    if ((vertexFormat & VertexFormat.VF_BONE_INDICES) == VertexFormat.VF_BONE_INDICES)
+                    {
+                        Color32* outIndices = (Color32*)&outBuffer[offset];
+                        outIndices->r = (byte)meshInfo.boneWeights[i].boneIndex0;
+                        outIndices->g = (byte)meshInfo.boneWeights[i].boneIndex1;
+                        outIndices->b = (byte)meshInfo.boneWeights[i].boneIndex2;
+                        outIndices->a = (byte)meshInfo.boneWeights[i].boneIndex3;
+                        offset += 4;
+                    }
+                }
+            }
+        }
+
+        private static void DisposeVertexBuffer(MeshInfo meshInfo)
+        {
+            meshInfo.vertexBuffer.vertices.Reset();
+        }
+
         /////////////////////////////////////////////////
         //:: Build Mesh
 
@@ -1203,9 +1629,44 @@ namespace Oculus.Avatar2
             meshInfo.texCoords = CreateVertexTexCoords(in vertexRepacker, ct);
 
             meshInfo.colors = CreateVertexColors(in vertexRepacker, ct);
+            meshInfo.colorsORMT = CreateVertexColorsORMT(in vertexRepacker, ct);
             meshInfo.subMeshTypes = CreateVertexSubMeshTypes(in vertexRepacker, ct);
 
             meshInfo.boneWeights = data.jointCount > 0 ? RetrieveBoneWeights(in vertexRepacker, ct) : null;
+        }
+
+        private void InvokeOnMeshLoaded(Mesh sourceMesh, MeshInfo meshInfo)
+        {
+            OvrAvatarLog.LogInfo($"InvokeOnAvatarMeshLoaded", "", OvrAvatarManager.Instance);
+            Profiler.BeginSample("OvrAvatarManager::InvokeOnAvatarMeshLoaded Callbacks");
+            try
+            {
+                if (OvrAvatarManager.Instance.HasMeshLoadListener)
+                {
+                    var destMesh = new OvrAvatarManager.MeshData(
+                        sourceMesh.name,
+                        sourceMesh.triangles,
+                        // We want to decouple the GPU vertex representation from the CPU representation.
+                        // So instead of reading from the mesh directly, we read from the internal mesh info.
+                        (meshInfo.verts.IsCreated) ? meshInfo.verts.ToArray() : Array.Empty<Vector3>(),
+                        (meshInfo.normals.IsCreated) ? meshInfo.normals.ToArray() : Array.Empty<Vector3>(),
+                        (meshInfo.meshColors.IsCreated) ? meshInfo.meshColors.ToArray() : Array.Empty<Color32>(),
+                        (meshInfo.texCoords.IsCreated) ? meshInfo.texCoords.ToArray() : Array.Empty<Vector2>(),
+                        (meshInfo.tangents.IsCreated) ? meshInfo.tangents.ToArray() : Array.Empty<Vector4>(),
+                        meshInfo.boneWeights,
+                        // Bind poses are not part of the vertex data.
+                        sourceMesh.bindposes
+                    );
+                    OvrAvatarManager.Instance.InvokeMeshLoadEvent(this, destMesh);
+                }
+            }
+            catch (Exception e)
+            {
+                OvrAvatarLog.LogException(
+                    "OnAvatarMeshLoaded user callback", e, primitiveLogScope,
+                    OvrAvatarManager.Instance);
+            }
+            finally { Profiler.EndSample(); }
         }
 
         private void AssembleMeshColors(MeshInfo meshInfo)
@@ -1235,10 +1696,10 @@ namespace Oculus.Avatar2
                             {
                                 Debug.Assert(meshColors != null);
 
-                                Color originalColor = meshColors[vertIdx];
-                                finalMeshColor.r = (byte)(originalColor.r * 255f);
-                                finalMeshColor.g = (byte)(originalColor.g * 255f);
-                                finalMeshColor.b = (byte)(originalColor.b * 255f);
+                                var originalColor = meshColors + vertIdx;
+                                finalMeshColor.r = (byte)(originalColor->r * 255f);
+                                finalMeshColor.g = (byte)(originalColor->g * 255f);
+                                finalMeshColor.b = (byte)(originalColor->b * 255f);
                             }
 
                             if (vertIdx < subMeshCount)
@@ -1251,7 +1712,6 @@ namespace Oculus.Avatar2
                             finalColors[vertIdx] = finalMeshColor;
                         }
                     }
-
                     meshInfo.meshColors = finalMeshColors;
                 }
                 catch (Exception e)
@@ -1261,6 +1721,7 @@ namespace Oculus.Avatar2
                     finalMeshColors.Reset();
                 }
             }
+
             meshInfo.colors.Reset();
             meshInfo.subMeshTypes.Reset();
         }
@@ -1315,10 +1776,7 @@ namespace Oculus.Avatar2
                     }
                 }
             }
-            finally
-            {
-                OvrAvatarHelperExtensions.Reset(ref vertsBufferArray);
-            }
+            finally { vertsBufferArray.Reset(); }
         }
 
         private NativeArray<T> CreateVertexDataWithPrimId<T>(in VertexRepacker repacker
@@ -1332,14 +1790,12 @@ namespace Oculus.Avatar2
             {
                 vertsBufferArray = new NativeArray<T>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit);
                 {
-                    IntPtr vertsBuffer;
-                    unsafe { vertsBuffer = (IntPtr)vertsBufferArray.GetUnsafePtr(); }
-
                     var elementSize = UnsafeUtility.SizeOf<T>();
-                    UInt32 stride = (UInt32)elementSize;
-                    UInt32 bufferSize = vertsBufferArray.GetBufferSize(elementSize);
-                    var result = accessor(data.id, data.vertexBufferId, vertsBuffer, bufferSize, stride);
+                    var vertsBuffer = vertsBufferArray.GetIntPtr();
+                    var bufferSize = vertsBufferArray.GetBufferSize(elementSize);
+                    var stride = (UInt32)elementSize;
 
+                    var result = accessor(data.id, data.vertexBufferId, vertsBuffer, bufferSize, stride);
                     if (repacker.NeedsRepacking)
                     {
                         return CreateProcessResult(repacker, vertsBufferArray, accessorName, result, ct);
@@ -1352,45 +1808,55 @@ namespace Oculus.Avatar2
                     }
                 }
             }
-            finally
-            {
-                vertsBufferArray.Reset();
-            }
+            finally { vertsBufferArray.Reset(); }
         }
 
         private NativeArray<Vector3> CreateVertexPositions(in VertexRepacker repacker, CancellationToken ct)
         {
-            return CreateVertexData<Vector3>(in repacker
+            return CreateVertexData<Vector3>(
+                in repacker
                 , CAPI.ovrAvatar2VertexBuffer_GetPositions, "GetVertexPositions", ct);
         }
 
         private NativeArray<Vector3> CreateVertexNormals(in VertexRepacker repacker, CancellationToken ct)
         {
-            return CreateVertexData<Vector3>(in repacker
+            return CreateVertexData<Vector3>(
+                in repacker
                 , CAPI.ovrAvatar2VertexBuffer_GetNormals, "GetVertexNormals", ct);
         }
 
         private NativeArray<Vector4> CreateVertexTangents(in VertexRepacker repacker, CancellationToken ct)
         {
-            return CreateVertexData<Vector4>(in repacker
+            return CreateVertexData<Vector4>(
+                in repacker
                 , CAPI.ovrAvatar2VertexBuffer_GetTangents, "GetVertexTangents", ct);
         }
 
         private NativeArray<Color> CreateVertexColors(in VertexRepacker repacker, CancellationToken ct)
         {
-            return CreateVertexData<Color>(in repacker
+            return CreateVertexData<Color>(
+                in repacker
                 , CAPI.ovrAvatar2VertexBuffer_GetColors, "GetVertexColors", ct);
+        }
+
+        private NativeArray<Color> CreateVertexColorsORMT(in VertexRepacker repacker, CancellationToken ct)
+        {
+            return CreateVertexData<Color>(
+                in repacker
+                , CAPI.ovrAvatar2VertexBuffer_GetColorsORMT, "GetVertexColorsORMT", ct);
         }
 
         private NativeArray<Vector2> CreateVertexTexCoords(in VertexRepacker repacker, CancellationToken ct)
         {
-            return CreateVertexData<Vector2>(in repacker
+            return CreateVertexData<Vector2>(
+                in repacker
                 , CAPI.ovrAvatar2VertexBuffer_GetTexCoord0, "GetVertexTexCoord0", ct);
         }
 
         private NativeArray<float> CreateVertexSubMeshTypes(in VertexRepacker repacker, CancellationToken ct)
         {
-            return CreateVertexDataWithPrimId<float>(in repacker
+            return CreateVertexDataWithPrimId<float>(
+                in repacker
                 , CAPI.ovrAvatar2VertexBuffer_GetSubMeshTypesFloat, "GetSubMeshTypesFloat", ct);
         }
 
@@ -1398,9 +1864,8 @@ namespace Oculus.Avatar2
         {
             ct.ThrowIfCancellationRequested();
 
-            int sizeOfOvrVector4us = UnsafeUtility.SizeOf<CAPI.ovrAvatar2Vector4us>();
-            UInt32 vec4fStride = sizeOfOvrVector4f;
-            UInt32 vec4usStride = (UInt32)sizeOfOvrVector4us;
+            var vec4usStride = (UInt32)UnsafeUtility.SizeOf<CAPI.ovrAvatar2Vector4us>();
+            var vec4fStride = (UInt32)UnsafeUtility.SizeOf<CAPI.ovrAvatar2Vector4f>();
 
             var indicesBuffer =
                 new NativeArray<CAPI.ovrAvatar2Vector4us>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit);
@@ -1409,36 +1874,27 @@ namespace Oculus.Avatar2
 
             try
             {
-                IntPtr indicesPtr, weightsPtr;
-                unsafe
-                {
-                    indicesPtr = (IntPtr)indicesBuffer.GetUnsafePtr();
-                    weightsPtr = (IntPtr)weightsBuffer.GetUnsafePtr();
-                }
+                IntPtr indicesPtr = indicesBuffer.GetIntPtr();
+                IntPtr weightsPtr = weightsBuffer.GetIntPtr();
 
-                UInt32 indicesBufferSize = indicesBuffer.GetBufferSize(sizeOfOvrVector4us);
-                UInt32 weightsBufferSize = weightsBuffer.GetBufferSize(sizeOfOvrVector4f);
+                var indicesBufferSize = indicesBuffer.GetBufferSize(vec4usStride);
+                var weightsBufferSize = weightsBuffer.GetBufferSize(vec4fStride);
 
                 var result = CAPI.ovrAvatar2VertexBuffer_GetJointIndices(
                     data.vertexBufferId, indicesPtr, indicesBufferSize, vec4usStride);
                 ct.ThrowIfCancellationRequested();
-                if (result == CAPI.ovrAvatar2Result.DataNotAvailable)
-                {
-                    return Array.Empty<BoneWeight>();
-                }
+                if (result == CAPI.ovrAvatar2Result.DataNotAvailable) { return Array.Empty<BoneWeight>(); }
                 else if (result != CAPI.ovrAvatar2Result.Success)
                 {
                     OvrAvatarLog.LogError($"GetVertexJointIndices {result}", primitiveLogScope);
                     return null;
                 }
 
-                result = CAPI.ovrAvatar2VertexBuffer_GetJointWeights(data.vertexBufferId, weightsPtr,
+                result = CAPI.ovrAvatar2VertexBuffer_GetJointWeights(
+                    data.vertexBufferId, weightsPtr,
                     weightsBufferSize, vec4fStride);
                 ct.ThrowIfCancellationRequested();
-                if (result == CAPI.ovrAvatar2Result.DataNotAvailable)
-                {
-                    return Array.Empty<BoneWeight>();
-                }
+                if (result == CAPI.ovrAvatar2Result.DataNotAvailable) { return Array.Empty<BoneWeight>(); }
                 else if (result != CAPI.ovrAvatar2Result.Success)
                 {
                     OvrAvatarLog.LogError($"GetVertexJointWeights {result}", primitiveLogScope);
@@ -1448,7 +1904,7 @@ namespace Oculus.Avatar2
                 ct.ThrowIfCancellationRequested();
 
                 using (var boneWeightsSrc =
-                    new NativeArray<BoneWeight>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit))
+                       new NativeArray<BoneWeight>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit))
                 {
                     var boneWeights = boneWeightsSrc.Slice();
 
@@ -1497,32 +1953,23 @@ namespace Oculus.Avatar2
             try
             {
                 triBuffer = new NativeArray<UInt16>((int)data.indexCount, _nativeAllocator, _nativeArrayInit);
-                IntPtr bufferPtr;
-                unsafe
-                {
-                    bufferPtr = (IntPtr)triBuffer.GetUnsafePtr();
-                }
 
                 UInt32 bufferSize = triBuffer.GetBufferSize(sizeof(UInt16));
-                var result = CAPI.ovrAvatar2Primitive_GetIndexData(assetId, bufferPtr, bufferSize);
-                if (result.IsSuccess())
+                bool result = CAPI.OvrAvatar2Primitive_GetIndexData(assetId, in triBuffer, bufferSize);
+                if (!result)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    // may steal triBuffer, pass it back as packedIndices, and set triBuffer to default
-                    repacker = VertexRepacker.Create(ref triBuffer, in prim, _bufferVertexCount, out var packedIndices, ct);
-                    return packedIndices;
-                }
-                else
-                {
-                    OvrAvatarLog.LogError($"GetIndexData {result}", primitiveLogScope);
                     repacker = default;
                     return default;
                 }
+
+                ct.ThrowIfCancellationRequested();
+                // may steal triBuffer, pass it back as packedIndices, and set triBuffer to default
+                repacker = VertexRepacker.Create(
+                    ref triBuffer, in prim, _bufferVertexCount, out var packedIndices,
+                    ct);
+                return packedIndices;
             }
-            finally
-            {
-                OvrAvatarHelperExtensions.Reset(ref triBuffer);
-            }
+            finally { triBuffer.Reset(); }
         }
 
         #endregion
@@ -1593,7 +2040,8 @@ namespace Oculus.Avatar2
                 case CAPI.ovrAvatar2MaterialTextureType.BaseColor:
                     if (!string.IsNullOrEmpty(_shaderConfig.NameTextureParameter_baseColorTexture))
                         material.SetTexture(_shaderConfig.NameTextureParameter_baseColorTexture, texture);
-                    material.SetColor(_shaderConfig.NameColorParameter_BaseColorFactor,
+                    material.SetColor(
+                        _shaderConfig.NameColorParameter_BaseColorFactor,
                         _shaderConfig.UseColorParameter_BaseColorFactor ? textureData.factor : Color.white);
                     material.mainTexture = texture;
                     break;
@@ -1601,6 +2049,11 @@ namespace Oculus.Avatar2
                 case CAPI.ovrAvatar2MaterialTextureType.Normal:
                     if (!string.IsNullOrEmpty(_shaderConfig.NameTextureParameter_normalTexture))
                         material.SetTexture(_shaderConfig.NameTextureParameter_normalTexture, texture);
+                    break;
+
+                case CAPI.ovrAvatar2MaterialTextureType.Emissive:
+                    if (!string.IsNullOrEmpty(_shaderConfig.NameTextureParameter_emissiveTexture))
+                        material.SetTexture(_shaderConfig.NameTextureParameter_emissiveTexture, texture);
                     break;
 
                 case CAPI.ovrAvatar2MaterialTextureType.Occulusion:
@@ -1611,12 +2064,17 @@ namespace Oculus.Avatar2
                 case CAPI.ovrAvatar2MaterialTextureType.MetallicRoughness:
                     if (!string.IsNullOrEmpty(_shaderConfig.NameTextureParameter_metallicRoughnessTexture))
                         material.SetTexture(_shaderConfig.NameTextureParameter_metallicRoughnessTexture, texture);
-                    material.SetFloat(_shaderConfig.NameFloatParameter_MetallicFactor,
+                    material.SetFloat(
+                        _shaderConfig.NameFloatParameter_MetallicFactor,
                         _shaderConfig.UseFloatParameter_MetallicFactor ? textureData.factor.x : 1f);
-                    material.SetFloat(_shaderConfig.NameFloatParameter_RoughnessFactor,
+                    material.SetFloat(
+                        _shaderConfig.NameFloatParameter_RoughnessFactor,
                         _shaderConfig.UseFloatParameter_RoughnessFactor ? textureData.factor.y : 1f);
                     break;
 
+                case CAPI.ovrAvatar2MaterialTextureType.UsedInExtension:
+                    // Let extensions handle it
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -1651,31 +2109,39 @@ namespace Oculus.Avatar2
                     // Would be nice if we had a single simple CAPI that returned what attributes were available, one call to get all 3
                     // we want to figure out which are available before we spend time allocating giant buffers.
                     var positionsResult =
-                        CAPI.ovrAvatar2MorphTarget_GetVertexPositions(data.morphTargetBufferId, iMorphTarget,
-                            IntPtr.Zero, 0, stride);
+                        CAPI.ovrAvatar2MorphTarget_GetVertexPositions(
+                            data.morphTargetBufferId, iMorphTarget,
+                            null, 0, stride);
                     if (!positionsResult.IsSuccess())
                     {
-                        OvrAvatarLog.LogError($"MorphTarget_GetVertexPositions ({iMorphTarget}) {positionsResult}",
+                        OvrAvatarLog.LogError(
+                            $"MorphTarget_GetVertexPositions ({iMorphTarget}) {positionsResult}",
                             primitiveLogScope);
                         continue;
                     }
+
                     var normalsResult =
-                    CAPI.ovrAvatar2MorphTarget_GetVertexNormals(data.morphTargetBufferId, iMorphTarget,
-                        IntPtr.Zero, 0, stride);
+                        CAPI.ovrAvatar2MorphTarget_GetVertexNormals(
+                            data.morphTargetBufferId, iMorphTarget,
+                            null, 0, stride);
                     bool normalsAvailable = normalsResult.IsSuccess();
                     if (!normalsAvailable && normalsResult != CAPI.ovrAvatar2Result.DataNotAvailable)
                     {
-                        OvrAvatarLog.LogError($"MorphTarget_GetVertexNormals ({iMorphTarget}) {normalsResult}",
+                        OvrAvatarLog.LogError(
+                            $"MorphTarget_GetVertexNormals ({iMorphTarget}) {normalsResult}",
                             primitiveLogScope);
                         continue;
                     }
+
                     var tangentsResult =
-                        CAPI.ovrAvatar2MorphTarget_GetVertexTangents(data.morphTargetBufferId, iMorphTarget,
-                            IntPtr.Zero, 0, stride);
+                        CAPI.ovrAvatar2MorphTarget_GetVertexTangents(
+                            data.morphTargetBufferId, iMorphTarget,
+                            null, 0, stride);
                     bool tangentsAvailable = tangentsResult.IsSuccess();
                     if (!tangentsAvailable && tangentsResult != CAPI.ovrAvatar2Result.DataNotAvailable)
                     {
-                        OvrAvatarLog.LogError($"MorphTarget_GetVertexTangents ({iMorphTarget}) {tangentsResult}",
+                        OvrAvatarLog.LogError(
+                            $"MorphTarget_GetVertexTangents ({iMorphTarget}) {tangentsResult}",
                             primitiveLogScope);
                         continue;
                     }
@@ -1687,22 +2153,19 @@ namespace Oculus.Avatar2
                     NativeArray<Vector3> tangentsArray = default;
                     try
                     {
-                        IntPtr positionsBuffer, normalsBuffer, tangentsBuffer;
-
                         // Positions
                         positionsArray =
                             new NativeArray<Vector3>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit);
-                        unsafe
-                        {
-                            positionsBuffer = (IntPtr)positionsArray.GetUnsafePtr();
-                        }
+
                         positionsResult =
-                            CAPI.ovrAvatar2MorphTarget_GetVertexPositions(data.morphTargetBufferId, iMorphTarget,
-                                positionsBuffer, bufferSize, stride);
+                            CAPI.ovrAvatar2MorphTarget_GetVertexPositions(
+                                data.morphTargetBufferId, iMorphTarget,
+                                positionsArray.CastOvrPtr(), bufferSize, stride);
                         ct.ThrowIfCancellationRequested();
                         if (!positionsResult.IsSuccess())
                         {
-                            OvrAvatarLog.LogError($"MorphTarget_GetVertexPositions ({iMorphTarget}) {positionsResult}",
+                            OvrAvatarLog.LogError(
+                                $"MorphTarget_GetVertexPositions ({iMorphTarget}) {positionsResult}",
                                 primitiveLogScope);
                             continue;
                         }
@@ -1710,19 +2173,20 @@ namespace Oculus.Avatar2
                         // Normals
                         if (normalsAvailable)
                         {
-                            normalsArray = new NativeArray<Vector3>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit);
-                            unsafe
-                            {
-                                normalsBuffer = (IntPtr)normalsArray.GetUnsafePtr();
-                            }
+                            normalsArray = new NativeArray<Vector3>(
+                                (int)bufferVertexCount, _nativeAllocator,
+                                _nativeArrayInit);
+
                             normalsResult =
-                            CAPI.ovrAvatar2MorphTarget_GetVertexNormals(data.morphTargetBufferId, iMorphTarget,
-                                normalsBuffer, bufferSize, stride);
+                                CAPI.ovrAvatar2MorphTarget_GetVertexNormals(
+                                    data.morphTargetBufferId, iMorphTarget,
+                                    normalsArray.CastOvrPtr(), bufferSize, stride);
                             ct.ThrowIfCancellationRequested();
                             normalsAvailable = normalsResult.IsSuccess();
                             if (!normalsAvailable && normalsResult != CAPI.ovrAvatar2Result.DataNotAvailable)
                             {
-                                OvrAvatarLog.LogError($"MorphTarget_GetVertexNormals ({iMorphTarget}) {normalsResult}",
+                                OvrAvatarLog.LogError(
+                                    $"MorphTarget_GetVertexNormals ({iMorphTarget}) {normalsResult}",
                                     primitiveLogScope);
                                 continue;
                             }
@@ -1731,59 +2195,59 @@ namespace Oculus.Avatar2
                         // Tangents
                         if (tangentsAvailable)
                         {
-                            tangentsArray = new NativeArray<Vector3>((int)bufferVertexCount, _nativeAllocator, _nativeArrayInit);
-                            unsafe
-                            {
-                                tangentsBuffer = (IntPtr)tangentsArray.GetUnsafePtr();
-                            }
+                            tangentsArray = new NativeArray<Vector3>(
+                                (int)bufferVertexCount, _nativeAllocator,
+                                _nativeArrayInit);
+
                             tangentsResult =
-                                CAPI.ovrAvatar2MorphTarget_GetVertexTangents(data.morphTargetBufferId, iMorphTarget,
-                                    tangentsBuffer, bufferSize, stride);
+                                CAPI.ovrAvatar2MorphTarget_GetVertexTangents(
+                                    data.morphTargetBufferId, iMorphTarget,
+                                    tangentsArray.CastOvrPtr(),
+                                    bufferSize, stride);
                             ct.ThrowIfCancellationRequested();
                             tangentsAvailable = tangentsResult.IsSuccess();
                             if (!tangentsAvailable && tangentsResult != CAPI.ovrAvatar2Result.DataNotAvailable)
                             {
-                                OvrAvatarLog.LogError($"MorphTarget_GetVertexTangents ({iMorphTarget}) {tangentsResult}",
+                                OvrAvatarLog.LogError(
+                                    $"MorphTarget_GetVertexTangents ({iMorphTarget}) {tangentsResult}",
                                     primitiveLogScope);
                                 continue;
                             }
                         }
 
-                        string name = string.Empty;
                         var nameResult =
-                            CAPI.ovrAvatar2Asset_GetMorphTargetName(data.morphTargetBufferId, iMorphTarget,
+                            CAPI.ovrAvatar2Asset_GetMorphTargetName(
+                                data.morphTargetBufferId, iMorphTarget,
                                 nameBuffer, nameBufferLength);
                         ct.ThrowIfCancellationRequested();
 
+                        var name = string.Empty;
                         if (nameResult.IsSuccess())
                         {
                             name = Marshal.PtrToStringAnsi((IntPtr)nameBuffer);
                         }
                         else if (nameResult != CAPI.ovrAvatar2Result.NotFound)
                         {
-                            OvrAvatarLog.LogError($"ovrAvatar2MorphTarget_GetName failed with {nameResult}");
+                            OvrAvatarLog.LogError($"ovrAvatar2MorphTarget_GetName failed with {nameResult}"
+                                , primitiveLogScope);
                         }
 
                         // If we failed to query the name, use the index
-                        if (string.IsNullOrEmpty(name))
-                        {
-                            name = "morphTarget" + iMorphTarget;
-                        }
+                        if (string.IsNullOrEmpty(name)) { name = "morphTarget" + iMorphTarget; }
 
                         // Add Morph Target
-                        morphTargetInfo[iMorphTarget] = new MorphTargetInfo
-                       (
-                           name,
-                           repacker.RepackAttribute(positionsArray),
-                           normalsAvailable ? repacker.RepackAttribute(normalsArray) : null,
-                           tangentsAvailable ? repacker.RepackAttribute(tangentsArray) : null
-                       );
+                        morphTargetInfo[iMorphTarget] = new MorphTargetInfo(
+                            name,
+                            repacker.RepackAttribute(positionsArray),
+                            normalsAvailable ? repacker.RepackAttribute(normalsArray) : null,
+                            tangentsAvailable ? repacker.RepackAttribute(tangentsArray) : null
+                        );
                     }
                     finally
                     {
-                        OvrAvatarHelperExtensions.Reset(ref positionsArray);
-                        OvrAvatarHelperExtensions.Reset(ref normalsArray);
-                        OvrAvatarHelperExtensions.Reset(ref tangentsArray);
+                        positionsArray.Reset();
+                        normalsArray.Reset();
+                        tangentsArray.Reset();
                     }
                 }
             }
@@ -1794,41 +2258,38 @@ namespace Oculus.Avatar2
             var ct = _cancellationTokenSource.Token;
             ct.ThrowIfCancellationRequested();
 
-            Matrix4x4[] bindPoses = Array.Empty<Matrix4x4>();
+            var bindPoses = Array.Empty<Matrix4x4>();
             var buildJoints = Array.Empty<int>();
-            if (data.jointCount > 0)
+
+            var jointCount = data.jointCount;
+            if (jointCount > 0)
             {
-                var sizeOfJointInfo = Marshal.SizeOf<CAPI.ovrAvatar2JointInfo>();
-
-                using (var jointsInfoArray =
-                    new NativeArray<CAPI.ovrAvatar2JointInfo>((int)data.jointCount, _nativeAllocator,
-                        _nativeArrayInit))
+                using var jointsInfoArray =
+                    new NativeArray<CAPI.ovrAvatar2JointInfo>(
+                        (int)jointCount, _nativeAllocator,
+                        _nativeArrayInit);
+                unsafe
                 {
-                    IntPtr jointInfoBuffer;
-                    unsafe
-                    {
-                        jointInfoBuffer = (IntPtr)jointsInfoArray.GetUnsafePtr();
-                    }
-
-                    var result = CAPI.ovrAvatar2Primitive_GetJointInfo(assetId, jointInfoBuffer,
-                        jointsInfoArray.GetBufferSize(sizeOfJointInfo));
+                    var jointInfoBuffer = jointsInfoArray.GetPtr();
+                    var result = CAPI.ovrAvatar2Primitive_GetJointInfo(
+                        assetId, jointInfoBuffer,
+                        jointsInfoArray.GetBufferSize());
                     ct.ThrowIfCancellationRequested();
-                    if (result.IsSuccess())
+
+                    if (result.EnsureSuccess("ovrAvatar2Primitive_GetJointInfo", primitiveLogScope))
                     {
-                        bindPoses = new Matrix4x4[data.jointCount];
-                        buildJoints = new int[data.jointCount];
-                        for (int i = 0; i < jointsInfoArray.Length; i++)
+                        buildJoints = new int[jointCount];
+                        bindPoses = new Matrix4x4[jointCount];
+                        for (int i = 0; i < jointCount; ++i)
                         {
-                            var jointInfo = jointsInfoArray[i];
-                            bindPoses[i] = jointInfo.inverseBind; //Convert to Matrix4x4
-                            buildJoints[i] = jointInfo.jointIndex;
+                            var jointInfoPtr = jointInfoBuffer + i;
+                            ref var bindPose = ref bindPoses[i];
+
+                            buildJoints[i] = jointInfoPtr->jointIndex;
+                            jointInfoPtr->inverseBind.CopyToUnityMatrix(out bindPose); //Convert to Matrix4x4
                         }
                     }
-                    else
-                    {
-                        OvrAvatarLog.LogError($"GetJointInfo {result}", primitiveLogScope);
-                    }
-                }
+                } // unsafe
             }
 
             ct.ThrowIfCancellationRequested();
@@ -1836,23 +2297,8 @@ namespace Oculus.Avatar2
             joints = buildJoints;
         }
 
-        private static T[] ProcessResult<T>(in VertexRepacker repacker, in NativeArray<T> buffer, string capiCallName, CAPI.ovrAvatar2Result result, CancellationToken ct) where T : unmanaged
-        {
-            ct.ThrowIfCancellationRequested();
-            switch (result)
-            {
-                case CAPI.ovrAvatar2Result.Success:
-                    return repacker.RepackAttribute(in buffer);
-
-                case CAPI.ovrAvatar2Result.DataNotAvailable:
-                    return Array.Empty<T>();
-
-                default:
-                    OvrAvatarLog.LogError($"{capiCallName} {result}", primitiveLogScope);
-                    return null;
-            }
-        }
-        private static NativeArray<T> CreateProcessResult<T>(in VertexRepacker repacker, in NativeArray<T> buffer, string capiCallName, CAPI.ovrAvatar2Result result, CancellationToken ct) where T : struct
+        private static NativeArray<T> CreateProcessResult<T>(in VertexRepacker repacker, in NativeArray<T> buffer,
+            string capiCallName, CAPI.ovrAvatar2Result result, CancellationToken ct) where T : struct
         {
             ct.ThrowIfCancellationRequested();
             switch (result)
@@ -1875,23 +2321,24 @@ namespace Oculus.Avatar2
         }
 
         // Unity doesn't currently have access to the buffer ranges for individual LODs, so we deduce them based on the index buffer
-        private struct VertexRepacker
+        private readonly struct VertexRepacker
         {
             private readonly BufferRange[] ranges;
             private readonly int totalVerts;
             private readonly bool needsRepacking;
-            public bool NeedsRepacking
-            {
-                get { return needsRepacking; }
-            }
 
-            public static VertexRepacker Create(ref NativeArray<UInt16> indices, in CAPI.ovrAvatar2Primitive prim, in uint vertexBufferSize, out NativeArray<UInt16> finalIndices, CancellationToken ct)
+            public bool NeedsRepacking => needsRepacking;
+
+            public static VertexRepacker Create(ref NativeArray<UInt16> indices, in CAPI.ovrAvatar2Primitive prim,
+                in uint vertexBufferSize, out NativeArray<UInt16> finalIndices, CancellationToken ct)
             {
                 if (indices.Length > 0)
                 {
                     int totalVerts;
                     bool needsRepacking;
-                    var ranges = ProcessIndices(ref indices, out totalVerts, out finalIndices, in prim, in vertexBufferSize, out needsRepacking, ct);
+                    var ranges = ProcessIndices(
+                        ref indices, out totalVerts, out finalIndices, in prim,
+                        in vertexBufferSize, out needsRepacking, ct);
                     return new VertexRepacker(ranges, totalVerts, needsRepacking);
                 }
                 else
@@ -1916,10 +2363,7 @@ namespace Oculus.Avatar2
                 if (needsRepacking)
                 {
                     T[] attrBuffer;
-                    try
-                    {
-                        attrBuffer = new T[totalVerts];
-                    }
+                    try { attrBuffer = new T[totalVerts]; }
                     catch (Exception e)
                     {
                         OvrAvatarLog.LogException("allocate primitive buffer (new T[len])", e, primitiveLogScope);
@@ -1931,7 +2375,8 @@ namespace Oculus.Avatar2
                         // Run GC to hopefully free memory for dynamic log strings
                         System.GC.Collect();
 
-                        OvrAvatarLog.LogError($"Failed to allocate primitive buffer of type {typeof(T)} with length {totalVerts}"
+                        OvrAvatarLog.LogError(
+                            $"Failed to allocate primitive buffer of type {typeof(T)} with length {totalVerts}"
                             , primitiveLogScope);
                         return Array.Empty<T>();
                     }
@@ -1945,10 +2390,7 @@ namespace Oculus.Avatar2
 
                     return attrBuffer;
                 }
-                else
-                {
-                    return buffer.ToArray();
-                }
+                else { return buffer.ToArray(); }
             }
 
             [Pure]
@@ -1964,11 +2406,14 @@ namespace Oculus.Avatar2
                     ref readonly var range = ref ranges[idx];
                     range.CopyRelevantSlice(in buffer, in packedResult, ref packedOffset);
                 }
+
                 return packedResult;
             }
 
 
-            private static BufferRange[] ProcessIndices(ref NativeArray<UInt16> indices, out int totalVerts, out NativeArray<UInt16> convertedIndices, in CAPI.ovrAvatar2Primitive prim, in uint vertexBufferSize, out bool needsRepacking, CancellationToken ct)
+            private static BufferRange[] ProcessIndices(ref NativeArray<UInt16> indices, out int totalVerts,
+                out NativeArray<UInt16> convertedIndices, in CAPI.ovrAvatar2Primitive prim, in uint vertexBufferSize,
+                out bool needsRepacking, CancellationToken ct)
             {
                 Debug.Assert(indices.Length > 0);
 
@@ -1991,8 +2436,6 @@ namespace Oculus.Avatar2
                         maxIndex = Mathf.Max(maxIndex, index);
                     }
                 }
-
-
                 ct.ThrowIfCancellationRequested();
 
                 var ranges = new List<BufferRange>();
@@ -2012,40 +2455,45 @@ namespace Oculus.Avatar2
                         inRange = true;
                     }
                 }
-                if (inRange)
-                {
-                    ranges.Add(new BufferRange(rangeStart, maxIndex));
-                }
-                ct.ThrowIfCancellationRequested();
 
+                if (inRange) { ranges.Add(new BufferRange(rangeStart, maxIndex)); }
+                ct.ThrowIfCancellationRequested();
 
                 var rangesArray = ranges.ToArray();
                 ranges.Clear();
+                ct.ThrowIfCancellationRequested();
 
-                needsRepacking = !(rangesArray.Length == 1 && rangesArray[0].FirstIndex == 0 && rangesArray[0].LastIndex == (vertexBufferSize - 1));
-                //needsRepacking = true;
+                needsRepacking = !(rangesArray.Length == 1 && rangesArray[0].FirstIndex == 0 &&
+                                   rangesArray[0].LastIndex == (vertexBufferSize - 1));
                 if (needsRepacking)
                 {
                     // Shift indices to match repacked vert data
-                    convertedIndices = new NativeArray<UInt16>(indices.Length, _nativeAllocator, _nativeArrayInit);
+                    var indicesLen = indices.Length;
+                    convertedIndices = new NativeArray<UInt16>(indicesLen, _nativeAllocator, _nativeArrayInit);
 
-                    totalVerts = 0;
-                    int packIdx = 0;
-                    for (int idx = 0; idx < rangesArray.Length; ++idx)
+                    unsafe
                     {
-                        ref readonly var range = ref rangesArray[idx];
-                        ct.ThrowIfCancellationRequested();
-                        range.ShiftIndexBuffer(in indices, convertedIndices, ref packIdx, ref totalVerts);
+                        var indicesPtr = indices.GetPtr();
+                        var convertedPtr = convertedIndices.GetPtr();
+                        totalVerts = 0;
+                        int packIdx = 0;
+                        for (int idx = 0; idx < rangesArray.Length; ++idx)
+                        {
+                            ref readonly var range = ref rangesArray[idx];
+                            range.ShiftIndexBuffer(indicesPtr, convertedPtr
+                                , ref packIdx, ref totalVerts
+                                , indicesLen);
+                        }
                     }
-                    return rangesArray;
                 }
                 else
                 {
                     totalVerts = (int)vertexBufferSize;
                     convertedIndices = indices;
                     indices = default;
-                    return rangesArray;
                 }
+
+                return rangesArray;
             }
 
             private struct BufferRange
@@ -2075,7 +2523,8 @@ namespace Oculus.Avatar2
                 // JetBrains didn't read the docs for System.Diagnostics.Contracts.Pure :/
                 // ReSharper disable once PureAttributeOnVoidMethod
                 [Pure]
-                public void CopyRelevantSlice<T>(in NativeArray<T> input, in NativeArray<T> output, ref int outputOffset) where T : struct
+                public void CopyRelevantSlice<T>(in NativeArray<T> input, in NativeArray<T> output,
+                    ref int outputOffset) where T : struct
                 {
                     NativeArray<T>.Copy(input, _firstIndex, output, outputOffset, _sliceLength);
                     outputOffset += _sliceLength;
@@ -2084,7 +2533,8 @@ namespace Oculus.Avatar2
                 // JetBrains didn't read the docs for System.Diagnostics.Contracts.Pure :/
                 // ReSharper disable once PureAttributeOnVoidMethod
                 [Pure]
-                public void CopyRelevantSlice<T>(in NativeArray<T> input, T[] output, int outputLength, ref int outputOffset) where T : unmanaged
+                public void CopyRelevantSlice<T>(in NativeArray<T> input, T[] output, int outputLength,
+                    ref int outputOffset) where T : unmanaged
                 {
                     NativeArray<T>.Copy(input, _firstIndex, output, outputOffset, _sliceLength);
                     outputOffset += _sliceLength;
@@ -2093,18 +2543,15 @@ namespace Oculus.Avatar2
                 // JetBrains didn't read the docs for System.Diagnostics.Contracts.Pure :/
                 // ReSharper disable once PureAttributeOnVoidMethod
                 [Pure]
-                public void ShiftIndexBuffer(in NativeArray<UInt16> src, in NativeArray<UInt16> dest, ref Int32 destOffset, ref int totalVerts)
+                public unsafe void ShiftIndexBuffer(UInt16* srcPtr, UInt16* dstPtr,
+                    ref Int32 destOffset, ref int totalVerts, int srcLen)
                 {
-                    int srcLen = src.Length;
-                    if (srcLen == 0) { return; }
+                    Debug.Assert(srcLen > 0);
+
                     // TODO: Something less dumb, though this is extremely thorough.
                     unsafe
                     {
-                        // Use C# unsafe pointers to avoid NativeArray indexer overhead
-                        var srcPtr = src.GetPtr();
                         var srcEnd = srcPtr + srcLen;
-
-                        var dstPtr = dest.GetPtr();
 
                         Int32 offset = totalVerts - _firstIndex;
                         do
@@ -2155,50 +2602,62 @@ namespace Oculus.Avatar2
                 morphTargetCount = morphTargetCnt;
             }
 
-            public Task CreateGpuPrimitiveHelperTask(MeshInfo meshInfo, MorphTargetInfo[] morphTargetInfo,
-                Int32[] joints, bool hasTangents)
+            public Task CreateSkinningPrimitivesHelperTask(
+                MeshInfo meshInfo,
+                MorphTargetInfo[] morphTargetInfo,
+                bool hasTangents,
+                bool gpuSkinning,
+                bool computeSkinning)
             {
-                OvrAvatarLog.AssertConstMessage(createPrimitivesTask == null, "recreating gpu primitive",
+                OvrAvatarLog.AssertConstMessage(
+                    createPrimitivesTask == null
+                    , "recreating gpu and/or compute primitive",
                     primitiveLogScope);
 
                 _meshInfo = meshInfo;
-                _meshInfo.WillBuildGpuPrimitive();
 
-                createPrimitivesTask = Task.Run(() =>
-                {
-                    // TODO: should get pointers to morph target data directly from Native
+                if (gpuSkinning) { _meshInfo.WillBuildGpuPrimitive(); }
+                if (computeSkinning) { _meshInfo.WillBuildComputePrimitive(); }
 
-                    deltaPositions = new NativeArray<IntPtr>((int)morphTargetCount, _nativeAllocator, _nativeArrayInit);
-                    deltaNormals = new NativeArray<IntPtr>((int)morphTargetCount, _nativeAllocator, _nativeArrayInit);
-                    if (hasTangents)
+                createPrimitivesTask = Task.Run(
+                    () =>
                     {
-                        deltaTangents = new NativeArray<IntPtr>((int)morphTargetCount, _nativeAllocator, _nativeArrayInit);
-                    }
-                    morphPosHandles = new GCHandle[morphTargetCount];
-                    morphNormalHandles = new GCHandle[morphTargetCount];
-                    if (hasTangents)
-                    {
-                        morphTangentHandles = new GCHandle[morphTargetCount];
-                    }
+                        // TODO: should get pointers to morph target data directly from Native
 
-                    for (var i = 0; i < morphTargetCount; ++i)
-                    {
-                        morphPosHandles[i] = GCHandle.Alloc(morphTargetInfo[i].targetPositions, GCHandleType.Pinned);
-                        morphNormalHandles[i] = GCHandle.Alloc(morphTargetInfo[i].targetNormals, GCHandleType.Pinned);
-
-                        deltaPositions[i] = morphPosHandles[i].AddrOfPinnedObject();
-                        deltaNormals[i] = morphNormalHandles[i].AddrOfPinnedObject();
-
+                        deltaPositions = new NativeArray<IntPtr>(
+                            (int)morphTargetCount, _nativeAllocator, _nativeArrayInit);
+                        deltaNormals = new NativeArray<IntPtr>(
+                            (int)morphTargetCount, _nativeAllocator, _nativeArrayInit);
                         if (hasTangents)
                         {
-                            morphTangentHandles[i] =
-                                GCHandle.Alloc(morphTargetInfo[i].targetTangents, GCHandleType.Pinned);
-                            deltaTangents[i] = morphTangentHandles[i].AddrOfPinnedObject();
+                            deltaTangents =
+                                new NativeArray<IntPtr>((int)morphTargetCount, _nativeAllocator, _nativeArrayInit);
                         }
-                    }
 
-                    createPrimitivesTask = null;
-                });
+                        morphPosHandles = new GCHandle[morphTargetCount];
+                        morphNormalHandles = new GCHandle[morphTargetCount];
+                        if (hasTangents) { morphTangentHandles = new GCHandle[morphTargetCount]; }
+
+                        for (var i = 0; i < morphTargetCount; ++i)
+                        {
+                            morphPosHandles[i] = GCHandle.Alloc(
+                                morphTargetInfo[i].targetPositions, GCHandleType.Pinned);
+                            morphNormalHandles[i] = GCHandle.Alloc(
+                                morphTargetInfo[i].targetNormals, GCHandleType.Pinned);
+
+                            deltaPositions[i] = morphPosHandles[i].AddrOfPinnedObject();
+                            deltaNormals[i] = morphNormalHandles[i].AddrOfPinnedObject();
+
+                            if (hasTangents)
+                            {
+                                morphTangentHandles[i] =
+                                    GCHandle.Alloc(morphTargetInfo[i].targetTangents, GCHandleType.Pinned);
+                                deltaTangents[i] = morphTangentHandles[i].AddrOfPinnedObject();
+                            }
+                        }
+
+                        createPrimitivesTask = null;
+                    });
                 return createPrimitivesTask;
             }
 
@@ -2220,20 +2679,56 @@ namespace Oculus.Avatar2
                     deltaTanPtr = deltaTangents.GetIntPtr();
                 }
 
-                var primitive = new OvrAvatarGpuSkinnedPrimitive(shortName, _meshInfo.vertexCount,
+                var primitive = new OvrAvatarGpuSkinnedPrimitive(
+                    shortName, _meshInfo.vertexCount,
                     neutralPositions, neutralNormals, neutralTangents,
                     morphTargetCount, deltaPosPtr, deltaNormPtr, deltaTanPtr,
                     (uint)joints.Length, _meshInfo.boneWeights,
+                    () => { _meshInfo.NeutralPoseTexComplete(); },
                     () =>
                     {
-                        _meshInfo.NeutralPoseTexComplete();
-                    },
-                    () =>
-                    {
-                        _meshInfo = null;
+                        _meshInfo.DidBuildGpuPrimitive();
+                        if (!_meshInfo.HasPendingPrimitives) { _meshInfo = null; }
                     });
 
-                _meshInfo.DidBuildGpuPrimitive();
+                return primitive;
+            }
+
+            public OvrAvatarComputeSkinnedPrimitive BuildComputePrimitive(MeshInfo meshInfo, bool hasTangents)
+            {
+                OvrAvatarLog.Assert(meshInfo == _meshInfo, primitiveLogScope);
+
+                IntPtr neutralPositions = _meshInfo.verts.GetIntPtr();
+                IntPtr neutralNormals = _meshInfo.normals.GetIntPtr();
+
+                IntPtr deltaPosPtr = deltaPositions.GetIntPtr();
+                IntPtr deltaNormPtr = deltaNormals.GetIntPtr();
+
+                IntPtr neutralTangents = IntPtr.Zero;
+                IntPtr deltaTanPtr = IntPtr.Zero;
+                if (hasTangents)
+                {
+                    neutralTangents = _meshInfo.tangents.GetIntPtr();
+                    deltaTanPtr = deltaTangents.GetIntPtr();
+                }
+
+                var primitive = new OvrAvatarComputeSkinnedPrimitive(
+                    shortName,
+                    (int)_meshInfo.vertexCount,
+                    neutralPositions,
+                    neutralNormals,
+                    neutralTangents,
+                    (int)morphTargetCount,
+                    deltaPosPtr,
+                    deltaNormPtr,
+                    deltaTanPtr,
+                    _meshInfo.boneWeights,
+                    () => { _meshInfo.NeutralPoseBuffersComplete(); },
+                    () =>
+                    {
+                        _meshInfo.DidBuildComputePrimitive();
+                        if (!_meshInfo.HasPendingPrimitives) { _meshInfo = null; }
+                    });
 
                 return primitive;
             }
@@ -2262,7 +2757,7 @@ namespace Oculus.Avatar2
 
                 if (_meshInfo != null)
                 {
-                    _meshInfo.CancelledBuildGpuPrimitive();
+                    _meshInfo.CancelledBuildPrimitives();
                     _meshInfo = null;
                 }
             }
@@ -2273,10 +2768,7 @@ namespace Oculus.Avatar2
                 {
                     foreach (var handle in handles)
                     {
-                        if (handle.IsAllocated)
-                        {
-                            handle.Free();
-                        }
+                        if (handle.IsAllocated) { handle.Free(); }
                     }
 
                     handles = null;
@@ -2291,18 +2783,5 @@ namespace Oculus.Avatar2
 
         private const Allocator _nativeAllocator = Allocator.Persistent;
         private const NativeArrayOptions _nativeArrayInit = NativeArrayOptions.UninitializedMemory;
-
-        private const int sizeOfFloat = sizeof(float);
-        private const int sizeOfOvrVector2f = sizeOfFloat * 2;
-        private const int sizeOfOvrVector3f = sizeOfFloat * 3;
-        private const int sizeOfOvrVector4f = sizeOfFloat * 4;
-
-        static OvrAvatarPrimitive()
-        {
-            // Cache data type sizes so we don't repeat them throughout this process
-            Debug.Assert(sizeOfOvrVector2f == Marshal.SizeOf<CAPI.ovrAvatar2Vector2f>());
-            Debug.Assert(sizeOfOvrVector3f == Marshal.SizeOf<CAPI.ovrAvatar2Vector3f>());
-            Debug.Assert(sizeOfOvrVector4f == Marshal.SizeOf<CAPI.ovrAvatar2Vector4f>());
-        }
     }
 }

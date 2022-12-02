@@ -1,16 +1,25 @@
-/************************************************************************************
-Copyright : Copyright (c) Facebook Technologies, LLC and its affiliates. All rights reserved.
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * Licensed under the Oculus SDK License Agreement (the "License");
+ * you may not use the Oculus SDK except in compliance with the License,
+ * which is provided at the time of installation or download, or which
+ * otherwise accompanies this software in either electronic or hard copy form.
+ *
+ * You may obtain a copy of the License at
+ *
+ * https://developer.oculus.com/licenses/oculussdk/
+ *
+ * Unless required by applicable law or agreed to in writing, the Oculus SDK
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-Your use of this SDK or tool is subject to the Oculus SDK License Agreement, available at
-https://developer.oculus.com/licenses/oculussdk/
 
-Unless required by applicable law or agreed to in writing, the Utilities SDK distributed
-under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
-ANY KIND, either express or implied. See the License for the specific language governing
-permissions and limitations under the License.
-************************************************************************************/
-
-#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS
+#if USING_XR_MANAGEMENT && (USING_XR_SDK_OCULUS || USING_XR_SDK_OPENXR)
 #define USING_XR_SDK
 #endif
 
@@ -26,9 +35,18 @@ permissions and limitations under the License.
 #error Oculus Utilities require Unity 2018.3 or higher.
 #endif
 
+#if !USING_XR_MANAGEMENT
+#warning XR Plug-in Management is not enabled. Your project would not launch in XR mode. Please install it through "Project Settings".
+#endif
+
+#if !(USING_XR_SDK_OCULUS || USING_XR_SDK_OPENXR)
+#warning Either "Oculus XR Plugin" or "OpenXR Plugin" must be installed for the project to run properly on Oculus/Meta XR Devices. Please install one of them through "XR Plug-in Management" settings, or Package Manager.
+#endif
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -49,94 +67,114 @@ using Node = UnityEngine.XR.XRNode;
 /// </summary>
 public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 {
-    public enum XrApi
-    {
-        Unknown = OVRPlugin.XrApi.Unknown,
-        CAPI = OVRPlugin.XrApi.CAPI,
-        VRAPI = OVRPlugin.XrApi.VRAPI,
-        OpenXR = OVRPlugin.XrApi.OpenXR,
-    }
+	public enum XrApi
+	{
+		Unknown = OVRPlugin.XrApi.Unknown,
+		CAPI = OVRPlugin.XrApi.CAPI,
+		VRAPI = OVRPlugin.XrApi.VRAPI,
+		OpenXR = OVRPlugin.XrApi.OpenXR,
+	}
 
-    public enum TrackingOrigin
-    {
-        EyeLevel = OVRPlugin.TrackingOrigin.EyeLevel,
-        FloorLevel = OVRPlugin.TrackingOrigin.FloorLevel,
-        Stage = OVRPlugin.TrackingOrigin.Stage,
-    }
+	public enum TrackingOrigin
+	{
+		EyeLevel = OVRPlugin.TrackingOrigin.EyeLevel,
+		FloorLevel = OVRPlugin.TrackingOrigin.FloorLevel,
+		Stage = OVRPlugin.TrackingOrigin.Stage,
+	}
 
-    public enum EyeTextureFormat
-    {
-        Default = OVRPlugin.EyeTextureFormat.Default,
-        R16G16B16A16_FP = OVRPlugin.EyeTextureFormat.R16G16B16A16_FP,
-        R11G11B10_FP = OVRPlugin.EyeTextureFormat.R11G11B10_FP,
-    }
+	public enum EyeTextureFormat
+	{
+		Default = OVRPlugin.EyeTextureFormat.Default,
+		R16G16B16A16_FP = OVRPlugin.EyeTextureFormat.R16G16B16A16_FP,
+		R11G11B10_FP = OVRPlugin.EyeTextureFormat.R11G11B10_FP,
+	}
 
-    public enum FixedFoveatedRenderingLevel
-    {
-        Off = OVRPlugin.FixedFoveatedRenderingLevel.Off,
-        Low = OVRPlugin.FixedFoveatedRenderingLevel.Low,
-        Medium = OVRPlugin.FixedFoveatedRenderingLevel.Medium,
-        High = OVRPlugin.FixedFoveatedRenderingLevel.High,
-        HighTop = OVRPlugin.FixedFoveatedRenderingLevel.HighTop,
-    }
+	public enum FoveatedRenderingLevel
+	{
+		Off = OVRPlugin.FoveatedRenderingLevel.Off,
+		Low = OVRPlugin.FoveatedRenderingLevel.Low,
+		Medium = OVRPlugin.FoveatedRenderingLevel.Medium,
+		High = OVRPlugin.FoveatedRenderingLevel.High,
+		HighTop = OVRPlugin.FoveatedRenderingLevel.HighTop,
+	}
 
-    [Obsolete("Please use FixedFoveatedRenderingLevel instead")]
-    public enum TiledMultiResLevel
-    {
-        Off = OVRPlugin.TiledMultiResLevel.Off,
-        LMSLow = OVRPlugin.TiledMultiResLevel.LMSLow,
-        LMSMedium = OVRPlugin.TiledMultiResLevel.LMSMedium,
-        LMSHigh = OVRPlugin.TiledMultiResLevel.LMSHigh,
-        LMSHighTop = OVRPlugin.TiledMultiResLevel.LMSHighTop,
-    }
+	[Obsolete("Please use FoveatedRenderingLevel instead")]
+	public enum FixedFoveatedRenderingLevel
+	{
+		Off = OVRPlugin.FixedFoveatedRenderingLevel.Off,
+		Low = OVRPlugin.FixedFoveatedRenderingLevel.Low,
+		Medium = OVRPlugin.FixedFoveatedRenderingLevel.Medium,
+		High = OVRPlugin.FixedFoveatedRenderingLevel.High,
+		HighTop = OVRPlugin.FixedFoveatedRenderingLevel.HighTop,
+	}
 
-    public enum SystemHeadsetType
-    {
-        None = OVRPlugin.SystemHeadset.None,
+	[Obsolete("Please use FoveatedRenderingLevel instead")]
+	public enum TiledMultiResLevel
+	{
+		Off = OVRPlugin.TiledMultiResLevel.Off,
+		LMSLow = OVRPlugin.TiledMultiResLevel.LMSLow,
+		LMSMedium = OVRPlugin.TiledMultiResLevel.LMSMedium,
+		LMSHigh = OVRPlugin.TiledMultiResLevel.LMSHigh,
+		LMSHighTop = OVRPlugin.TiledMultiResLevel.LMSHighTop,
+	}
 
-        // Standalone headsets
-        Oculus_Quest = OVRPlugin.SystemHeadset.Oculus_Quest,
-        Oculus_Quest_2 = OVRPlugin.SystemHeadset.Oculus_Quest_2,
-        Placeholder_10 = OVRPlugin.SystemHeadset.Placeholder_10,
-        Placeholder_11 = OVRPlugin.SystemHeadset.Placeholder_11,
-        Placeholder_12 = OVRPlugin.SystemHeadset.Placeholder_12,
-        Placeholder_13 = OVRPlugin.SystemHeadset.Placeholder_13,
-        Placeholder_14 = OVRPlugin.SystemHeadset.Placeholder_14,
+	public enum SystemHeadsetType
+	{
+		None = OVRPlugin.SystemHeadset.None,
 
-        // PC headsets
-        Rift_DK1 = OVRPlugin.SystemHeadset.Rift_DK1,
-        Rift_DK2 = OVRPlugin.SystemHeadset.Rift_DK2,
-        Rift_CV1 = OVRPlugin.SystemHeadset.Rift_CV1,
-        Rift_CB = OVRPlugin.SystemHeadset.Rift_CB,
-        Rift_S = OVRPlugin.SystemHeadset.Rift_S,
-        Oculus_Link_Quest = OVRPlugin.SystemHeadset.Oculus_Link_Quest,
-        Oculus_Link_Quest_2 = OVRPlugin.SystemHeadset.Oculus_Link_Quest_2,
-        PC_Placeholder_4103 = OVRPlugin.SystemHeadset.PC_Placeholder_4103,
-        PC_Placeholder_4104 = OVRPlugin.SystemHeadset.PC_Placeholder_4104,
-        PC_Placeholder_4105 = OVRPlugin.SystemHeadset.PC_Placeholder_4105,
-        PC_Placeholder_4106 = OVRPlugin.SystemHeadset.PC_Placeholder_4106,
-        PC_Placeholder_4107 = OVRPlugin.SystemHeadset.PC_Placeholder_4107
-    }
+		// Standalone headsets
+		Oculus_Quest = OVRPlugin.SystemHeadset.Oculus_Quest,
+		Oculus_Quest_2 = OVRPlugin.SystemHeadset.Oculus_Quest_2,
+		Meta_Quest_Pro = OVRPlugin.SystemHeadset.Meta_Quest_Pro,
+		Placeholder_11 = OVRPlugin.SystemHeadset.Placeholder_11,
+		Placeholder_12 = OVRPlugin.SystemHeadset.Placeholder_12,
+		Placeholder_13 = OVRPlugin.SystemHeadset.Placeholder_13,
+		Placeholder_14 = OVRPlugin.SystemHeadset.Placeholder_14,
 
-    public enum XRDevice
-    {
-        Unknown = 0,
-        Oculus = 1,
-        OpenVR = 2,
-    }
+		// PC headsets
+		Rift_DK1 = OVRPlugin.SystemHeadset.Rift_DK1,
+		Rift_DK2 = OVRPlugin.SystemHeadset.Rift_DK2,
+		Rift_CV1 = OVRPlugin.SystemHeadset.Rift_CV1,
+		Rift_CB = OVRPlugin.SystemHeadset.Rift_CB,
+		Rift_S = OVRPlugin.SystemHeadset.Rift_S,
+		Oculus_Link_Quest = OVRPlugin.SystemHeadset.Oculus_Link_Quest,
+		Oculus_Link_Quest_2 = OVRPlugin.SystemHeadset.Oculus_Link_Quest_2,
+		Meta_Link_Quest_Pro = OVRPlugin.SystemHeadset.Meta_Link_Quest_Pro,
+		PC_Placeholder_4104 = OVRPlugin.SystemHeadset.PC_Placeholder_4104,
+		PC_Placeholder_4105 = OVRPlugin.SystemHeadset.PC_Placeholder_4105,
+		PC_Placeholder_4106 = OVRPlugin.SystemHeadset.PC_Placeholder_4106,
+		PC_Placeholder_4107 = OVRPlugin.SystemHeadset.PC_Placeholder_4107
+	}
 
-    public enum ColorSpace
-    {
-        Unknown = OVRPlugin.ColorSpace.Unknown,
-        Unmanaged = OVRPlugin.ColorSpace.Unmanaged,
-        Rec_2020 = OVRPlugin.ColorSpace.Rec_2020,
-        Rec_709 = OVRPlugin.ColorSpace.Rec_709,
-        Rift_CV1 = OVRPlugin.ColorSpace.Rift_CV1,
-        Rift_S = OVRPlugin.ColorSpace.Rift_S,
-        Quest = OVRPlugin.ColorSpace.Quest,
-        P3 = OVRPlugin.ColorSpace.P3,
-        Adobe_RGB = OVRPlugin.ColorSpace.Adobe_RGB,
-    }
+	public enum XRDevice
+	{
+		Unknown = 0,
+		Oculus = 1,
+		OpenVR = 2,
+	}
+
+	public enum ColorSpace
+	{
+		Unknown = OVRPlugin.ColorSpace.Unknown,
+		Unmanaged = OVRPlugin.ColorSpace.Unmanaged,
+		Rec_2020 = OVRPlugin.ColorSpace.Rec_2020,
+		Rec_709 = OVRPlugin.ColorSpace.Rec_709,
+		Rift_CV1 = OVRPlugin.ColorSpace.Rift_CV1,
+		Rift_S = OVRPlugin.ColorSpace.Rift_S,
+		Quest = OVRPlugin.ColorSpace.Quest,
+		P3 = OVRPlugin.ColorSpace.P3,
+		Adobe_RGB = OVRPlugin.ColorSpace.Adobe_RGB,
+	}
+
+	public enum ProcessorPerformanceLevel
+	{
+		PowerSavings = OVRPlugin.ProcessorPerformanceLevel.PowerSavings,
+		SustainedLow = OVRPlugin.ProcessorPerformanceLevel.SustainedLow,
+		SustainedHigh = OVRPlugin.ProcessorPerformanceLevel.SustainedHigh,
+		Boost = OVRPlugin.ProcessorPerformanceLevel.Boost,
+	}
+
+
 
     /// <summary>
     /// Gets the singleton instance.
@@ -157,6 +195,11 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     /// Gets a reference to the active boundary system.
     /// </summary>
     public static OVRBoundary boundary { get; private set; }
+
+    /// <summary>
+    /// Gets a reference to the runtime settings.
+    /// </summary>
+    public static OVRRuntimeSettings runtimeSettings { get; private set; }
 
     private static OVRProfile _profile;
     /// <summary>
@@ -240,6 +283,50 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     /// @params (float fromRefreshRate, float toRefreshRate)
     /// </summary>
     public static event Action<float, float> DisplayRefreshRateChanged;
+
+    /// <summary>
+    /// Occurs when attempting to create a spatial anchor space
+    /// @params (UInt64 requestId, bool result, OVRSpace space, Guid uuid)
+    /// </summary>
+    public static event Action<UInt64, bool, OVRSpace, Guid> SpatialAnchorCreateComplete;
+
+    /// <summary>
+    /// Occurs when attempting to enable a component on a space
+    /// @params (UInt64 requestId, bool result, OVRSpace space, Guid uuid, OVRPlugin.SpaceComponentType componentType, bool enabled)
+    /// </summary>
+    public static event Action<UInt64, bool, OVRSpace, Guid, OVRPlugin.SpaceComponentType, bool> SpaceSetComponentStatusComplete;
+
+    /// <summary>
+    /// Occurs when one or more spaces are found during query
+    /// @params (UInt64 requestId)
+    /// </summary>
+    public static event Action<UInt64> SpaceQueryResults;
+
+    /// <summary>
+    /// Occurs when querying for a space completes
+    /// @params (UInt64 requestId, bool result)
+    /// </summary>
+    public static event Action<UInt64, bool> SpaceQueryComplete;
+
+    /// <summary>
+    /// Occurs when saving a space
+    /// @params (UInt64 requestId, OVRSpace space, bool result, Guid uuid)
+    /// </summary>
+    public static event Action<UInt64, OVRSpace, bool, Guid> SpaceSaveComplete;
+
+    /// <summary>
+    /// Occurs when erasing a space
+    /// @params (UInt64 requestId, bool result, Guid uuid, SpaceStorageLocation location)
+    /// </summary>
+    public static event Action<UInt64, bool, Guid, OVRPlugin.SpaceStorageLocation> SpaceEraseComplete;
+
+
+    /// <summary>
+    /// Occurs when a scene capture request completes
+    /// @params (UInt64 requestId, bool result)
+    /// </summary>
+    public static event Action<UInt64, bool> SceneCaptureComplete;
+
 
 
     /// <summary>
@@ -387,7 +474,7 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         }
     }
 
-    [SerializeField, HideInInspector]
+    [HideInInspector]
     private OVRManager.ColorSpace _colorGamut = OVRManager.ColorSpace.Rift_CV1;
 
     /// <summary>
@@ -779,6 +866,28 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     [HideInInspector, Tooltip("Specify if Insight Passthrough should be enabled. Passthrough layers can only be used if passthrough is enabled.")]
     public bool isInsightPassthroughEnabled = false;
 
+
+    #region Permissions
+    /// <summary>`
+    /// Specify if the app will request body tracking permission on startup.
+    /// </summary>
+    [SerializeField, HideInInspector]
+    internal bool requestBodyTrackingPermissionOnStartup;
+
+    /// <summary>
+    /// Specify if the app will request face tracking permission on startup.
+    /// </summary>
+    [SerializeField, HideInInspector]
+    internal bool requestFaceTrackingPermissionOnStartup;
+
+    /// <summary>
+    /// Specify if the app will request eye tracking permission on startup.
+    /// </summary>
+    [SerializeField, HideInInspector]
+    internal bool requestEyeTrackingPermissionOnStartup;
+
+    #endregion
+
     /// <summary>
     /// The native XR API being used
     /// </summary>
@@ -901,8 +1010,53 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     }
 
     /// <summary>
-    /// Gets or sets the current CPU performance level (0-2). Lower performance levels save more power.
+    /// Gets or sets the current suggested CPU performance level, which can be overriden by the Power Management system.
     /// </summary>
+    public static ProcessorPerformanceLevel suggestedCpuPerfLevel
+    {
+        get
+        {
+            if (!isHmdPresent)
+                return ProcessorPerformanceLevel.PowerSavings;
+
+            return (ProcessorPerformanceLevel)OVRPlugin.suggestedCpuPerfLevel;
+        }
+
+        set
+        {
+            if (!isHmdPresent)
+                return;
+
+            OVRPlugin.suggestedCpuPerfLevel = (OVRPlugin.ProcessorPerformanceLevel)value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the current suggested GPU performance level, which can be overriden by the Power Management system.
+    /// </summary>
+    public static ProcessorPerformanceLevel suggestedGpuPerfLevel
+    {
+        get
+        {
+            if (!isHmdPresent)
+                return ProcessorPerformanceLevel.PowerSavings;
+
+            return (ProcessorPerformanceLevel)OVRPlugin.suggestedGpuPerfLevel;
+        }
+
+        set
+        {
+            if (!isHmdPresent)
+                return;
+
+            OVRPlugin.suggestedGpuPerfLevel = (OVRPlugin.ProcessorPerformanceLevel)value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the current CPU performance level (0-2). Lower performance levels save more power. (Deprecated)
+    /// </summary>
+    [System.Obsolete("Deprecated. Please use suggestedCpuPerfLevel", false)]
     public static int cpuLevel
     {
         get {
@@ -921,8 +1075,9 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     }
 
     /// <summary>
-    /// Gets or sets the current GPU performance level (0-2). Lower performance levels save more power.
+    /// Gets or sets the current GPU performance level (0-2). Lower performance levels save more power. (Deprecated)
     /// </summary>
+    [System.Obsolete("Deprecated. Please use suggestedGpuPerfLevel", false)]
     public static int gpuLevel
     {
         get {
@@ -970,9 +1125,50 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     }
 
     /// <summary>
-    /// Gets if tiled-based multi-resolution technique is supported
+    /// Gets if eye tracked foveated rendering feature is supported on this device
+    /// </summary>
+    public static bool eyeTrackedFoveatedRenderingSupported
+    {
+        get
+        {
+            return OVRPlugin.eyeTrackedFoveatedRenderingSupported;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets if eye tracked foveated rendering is enabled or not.
+    /// </summary>
+    public static bool eyeTrackedFoveatedRenderingEnabled
+    {
+        get
+        {
+            return OVRPlugin.eyeTrackedFoveatedRenderingEnabled;
+        }
+        set
+        {
+            if (OVRPermissionsRequester.IsPermissionGranted(OVRPermissionsRequester.Permission.EyeTracking))
+            {
+                OVRPlugin.eyeTrackedFoveatedRenderingEnabled = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the tiled-based multi-resolution level
     /// This feature is only supported on QCOMM-based Android devices
     /// </summary>
+    public static FoveatedRenderingLevel foveatedRenderingLevel
+    {
+        get
+        {
+            return (FoveatedRenderingLevel)OVRPlugin.foveatedRenderingLevel;
+        }
+        set
+        {
+            OVRPlugin.foveatedRenderingLevel = (OVRPlugin.FoveatedRenderingLevel)value;
+        }
+    }
+
     public static bool fixedFoveatedRenderingSupported
     {
         get
@@ -981,27 +1177,28 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         }
     }
 
-    /// <summary>
-    /// Gets or sets the tiled-based multi-resolution level
-    /// This feature is only supported on QCOMM-based Android devices
-    /// </summary>
+    [Obsolete("Please use foveatedRenderingLevel instead", false)]
     public static FixedFoveatedRenderingLevel fixedFoveatedRenderingLevel
     {
         get
         {
-            if (!OVRPlugin.fixedFoveatedRenderingSupported)
-            {
-                Debug.LogWarning("Fixed Foveated Rendering feature is not supported");
-            }
             return (FixedFoveatedRenderingLevel)OVRPlugin.fixedFoveatedRenderingLevel;
         }
         set
         {
-            if (!OVRPlugin.fixedFoveatedRenderingSupported)
-            {
-                Debug.LogWarning("Fixed Foveated Rendering feature is not supported");
-            }
             OVRPlugin.fixedFoveatedRenderingLevel = (OVRPlugin.FixedFoveatedRenderingLevel)value;
+        }
+    }
+
+    public static bool useDynamicFoveatedRendering
+    {
+        get
+        {
+            return OVRPlugin.useDynamicFoveatedRendering;
+        }
+        set
+        {
+            OVRPlugin.useDynamicFoveatedRendering = value;
         }
     }
 
@@ -1009,22 +1206,15 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     /// Let the system decide the best foveation level adaptively (Off .. fixedFoveatedRenderingLevel)
     /// This feature is only supported on QCOMM-based Android devices
     /// </summary>
+    [Obsolete("Please use useDynamicFoveatedRendering instead", false)]
     public static bool useDynamicFixedFoveatedRendering
     {
         get
         {
-            if (!OVRPlugin.fixedFoveatedRenderingSupported)
-            {
-                Debug.LogWarning("Fixed Foveated Rendering feature is not supported");
-            }
             return OVRPlugin.useDynamicFixedFoveatedRendering;
         }
         set
         {
-            if (!OVRPlugin.fixedFoveatedRenderingSupported)
-            {
-                Debug.LogWarning("Fixed Foveated Rendering feature is not supported");
-            }
             OVRPlugin.useDynamicFixedFoveatedRendering = value;
         }
     }
@@ -1038,23 +1228,15 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         }
     }
 
-    [Obsolete("Please use fixedFoveatedRenderingLevel instead", false)]
+    [Obsolete("Please use foveatedRenderingLevel instead", false)]
     public static TiledMultiResLevel tiledMultiResLevel
     {
         get
         {
-            if (!OVRPlugin.tiledMultiResSupported)
-            {
-                Debug.LogWarning("Tiled-based Multi-resolution feature is not supported");
-            }
             return (TiledMultiResLevel)OVRPlugin.tiledMultiResLevel;
         }
         set
         {
-            if (!OVRPlugin.tiledMultiResSupported)
-            {
-                Debug.LogWarning("Tiled-based Multi-resolution feature is not supported");
-            }
             OVRPlugin.tiledMultiResLevel = (OVRPlugin.TiledMultiResLevel)value;
         }
     }
@@ -1146,6 +1328,49 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         return poseOffset;
     }
 
+    /// <summary>
+    /// Enables or disables space warp
+    /// </summary>
+    public static void SetSpaceWarp(bool enabled)
+    {
+        Camera mainCamera = FindMainCamera();
+        if (enabled)
+        {
+            m_CachedDepthTextureMode = mainCamera.depthTextureMode;
+            mainCamera.depthTextureMode |= (DepthTextureMode.MotionVectors | DepthTextureMode.Depth);
+
+            if (mainCamera.transform.parent == null)
+            {
+                m_AppSpaceTransform.position = Vector3.zero;
+                m_AppSpaceTransform.rotation = Quaternion.identity;
+            }
+            else
+            {
+                m_AppSpaceTransform = mainCamera.transform.parent;
+            }
+        }
+        else
+        {
+            mainCamera.depthTextureMode = m_CachedDepthTextureMode;
+            m_AppSpaceTransform = null;
+        }
+#if USING_XR_SDK_OCULUS
+        OculusXRPlugin.SetSpaceWarp(enabled ? OVRPlugin.Bool.True : OVRPlugin.Bool.False);
+#endif
+        m_SpaceWarpEnabled = enabled;
+    }
+    private static bool m_SpaceWarpEnabled;
+    private static Transform m_AppSpaceTransform;
+    private static DepthTextureMode m_CachedDepthTextureMode;
+
+    public static bool GetSpaceWarp()
+    {
+        return m_SpaceWarpEnabled;
+    }
+
+    [SerializeField]
+    [Tooltip("Available only for devices that support local dimming. It improves visual quality with a better display contrast ratio, but at a minor GPU performance cost.")]
+    private bool _localDimming = false;
 
     [Header("Tracking")]
     [SerializeField]
@@ -1167,7 +1392,44 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
             if (!isHmdPresent)
                 return;
 
-            if (OVRPlugin.SetTrackingOriginType((OVRPlugin.TrackingOrigin)value))
+            OVRPlugin.TrackingOrigin newOrigin = (OVRPlugin.TrackingOrigin)value;
+
+#if USING_XR_SDK_OPENXR
+			if (OVRPlugin.UnityOpenXR.Enabled)
+			{
+				if (GetCurrentInputSubsystem() == null)
+				{
+					Debug.LogError("InputSubsystem not found");
+					return;
+				}
+
+				TrackingOriginModeFlags mode = TrackingOriginModeFlags.Unknown;
+				if (newOrigin == OVRPlugin.TrackingOrigin.EyeLevel)
+				{
+					mode = TrackingOriginModeFlags.Device;
+				}
+				else if (newOrigin == OVRPlugin.TrackingOrigin.FloorLevel || newOrigin == OVRPlugin.TrackingOrigin.Stage)
+				{
+					mode = TrackingOriginModeFlags.Floor; // Stage in OpenXR
+				}
+				else
+				{
+					Debug.LogError("Unable to map TrackingOrigin {0} in Unity OpenXR");
+				}
+				bool success = GetCurrentInputSubsystem().TrySetTrackingOriginMode(mode);
+				if (!success)
+				{
+					Debug.LogError("Unable to set TrackingOrigin {0} to Unity Input Subsystem");
+				}
+				else
+				{
+					_trackingOriginType = value;
+				}
+				return;
+			}
+#endif
+
+            if (OVRPlugin.SetTrackingOriginType(newOrigin))
             {
                 // Keep the field exposed in the Unity Editor synchronized with any changes.
                 _trackingOriginType = value;
@@ -1200,13 +1462,13 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     public bool resetTrackerOnLoad = false;
 
     /// <summary>
-    /// If true, the Reset View in the universal menu will cause the pose to be reset. This should generally be
-    /// enabled for applications with a stationary position in the virtual world and will allow the View Reset
-    /// command to place the person back to a predefined location (such as a cockpit seat).
+    /// If true, the Reset View in the universal menu will cause the pose to be reset in PC VR. This should
+    /// generally be enabled for applications with a stationary position in the virtual world and will allow
+    /// the View Reset command to place the person back to a predefined location (such as a cockpit seat).
     /// Set this to false if you have a locomotion system because resetting the view would effectively teleport
     /// the player to potentially invalid locations.
     /// </summary>
-    [Tooltip("If true, the Reset View in the universal menu will cause the pose to be reset. This should generally be enabled for applications with a stationary position in the virtual world and will allow the View Reset command to place the person back to a predefined location (such as a cockpit seat). Set this to false if you have a locomotion system because resetting the view would effectively teleport the player to potentially invalid locations.")]
+    [Tooltip("If true, the Reset View in the universal menu will cause the pose to be reset in PC VR. This should generally be enabled for applications with a stationary position in the virtual world and will allow the View Reset command to place the person back to a predefined location (such as a cockpit seat). Set this to false if you have a locomotion system because resetting the view would effectively teleport the player to potentially invalid locations.")]
     public bool AllowRecenter = true;
 
     /// <summary>
@@ -1216,6 +1478,11 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     /// </summary>
     [Tooltip("If true, rendered controller latency is reduced by several ms, as the left/right controllers will have their positions updated right before rendering.")]
     public bool LateControllerUpdate = true;
+
+#if UNITY_2020_3_OR_NEWER
+    [Tooltip("Late latching is a feature that can reduce rendered head/controller latency by a substantial amount. Before enabling, be sure to go over the documentation to ensure that the feature is used correctly. This feature must also be enabled through the Oculus XR Plugin settings.")]
+    public bool LateLatching = false;
+#endif
 
     /// <summary>
     /// True if the current platform supports virtual reality.
@@ -1253,6 +1520,7 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     private static bool wasPositionTracked = false;
 
     private static OVRPlugin.EventDataBuffer eventDataBuffer = new OVRPlugin.EventDataBuffer();
+
 
     public static System.Version utilitiesVersion
     {
@@ -1344,9 +1612,26 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 
     public static string UnityAlphaOrBetaVersionWarningMessage = "WARNING: It's not recommended to use Unity alpha/beta release in Oculus development. Use a stable release if you encounter any issue.";
 
-#region Unity Messages
+    #region Unity Messages
+
+#if UNITY_EDITOR
+    [AOT.MonoPInvokeCallback(typeof(OVRPlugin.LogCallback2DelegateType))]
+    static void OVRPluginLogCallback(OVRPlugin.LogLevel logLevel, IntPtr message, int size)
+    {
+        string logString = System.Runtime.InteropServices.Marshal.PtrToStringAnsi(message, size);
+        if (logLevel <= OVRPlugin.LogLevel.Info)
+        {
+            UnityEngine.Debug.Log("[OVRPlugin] " + logString);
+        }
+        else
+        {
+            UnityEngine.Debug.LogWarning("[OVRPlugin] " + logString);
+        }
+    }
+#endif
 
     public static bool OVRManagerinitialized = false;
+
     private void InitOVRManager()
     {
         // Only allow one instance at runtime.
@@ -1359,13 +1644,15 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 
         instance = this;
 
+        runtimeSettings = OVRRuntimeSettings.GetRuntimeSettings();
+
         // uncomment the following line to disable the callstack printed to log
         //Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);  // TEMPORARY
 
         Debug.Log("Unity v" + Application.unityVersion + ", " +
-                "Oculus Utilities v" + OVRPlugin.wrapperVersion + ", " +
-                "OVRPlugin v" + OVRPlugin.version + ", " +
-                "SDK v" + OVRPlugin.nativeSDKVersion + ".");
+                  "Oculus Utilities v" + OVRPlugin.wrapperVersion + ", " +
+                  "OVRPlugin v" + OVRPlugin.version + ", " +
+                  "SDK v" + OVRPlugin.nativeSDKVersion + ".");
 
         Debug.LogFormat("SystemHeadset {0}, API {1}", systemHeadsetType.ToString(), xrApi.ToString());
 
@@ -1375,10 +1662,10 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         }
 
 #if !UNITY_EDITOR
-        if (IsUnityAlphaOrBetaVersion())
-        {
-            Debug.LogWarning(UnityAlphaOrBetaVersionWarningMessage);
-        }
+		if (IsUnityAlphaOrBetaVersion())
+		{
+			Debug.LogWarning(UnityAlphaOrBetaVersionWarningMessage);
+		}
 #endif
 
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
@@ -1411,13 +1698,17 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
             return;
         }
 
+#if UNITY_EDITOR
+        OVRPlugin.SetLogCallback2(OVRPluginLogCallback);
+#endif
+
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // Turn off chromatic aberration by default to save texture bandwidth.
-        chromatic = false;
+		// Turn off chromatic aberration by default to save texture bandwidth.
+		chromatic = false;
 #endif
 
 #if (UNITY_STANDALONE_WIN || UNITY_ANDROID) && !UNITY_EDITOR
-        enableMixedReality = false;     // we should never start the standalone game in MxR mode, unless the command-line parameter is provided
+		enableMixedReality = false;     // we should never start the standalone game in MxR mode, unless the command-line parameter is provided
 #endif
 
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
@@ -1468,6 +1759,7 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 #endif
 
         Initialize();
+        InitPermissionRequest();
 
         Debug.LogFormat("Current display frequency {0}, available frequencies [{1}]",
             display.displayFrequency, string.Join(", ", display.displayFrequenciesAvailable.Select(f => f.ToString()).ToArray()));
@@ -1489,12 +1781,12 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
                 perfTcpServer.enabled = true;
             }
 #if !UNITY_EDITOR
-            OVRPlugin.SetDeveloperMode(OVRPlugin.Bool.True);
+			OVRPlugin.SetDeveloperMode(OVRPlugin.Bool.True);
 #endif
         }
 
         // Refresh the client color space
-        OVRManager.ColorSpace clientColorSpace = colorGamut;
+        OVRManager.ColorSpace clientColorSpace = runtimeSettings.colorSpace;
         colorGamut = clientColorSpace;
 
 #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
@@ -1508,16 +1800,49 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
             InitializeInsightPassthrough();
         }
 
+        // Apply validation criteria to _localDimming toggle to ensure it isn't active on invalid systems
+        if (!OVRPlugin.localDimmingSupported)
+        {
+            Debug.LogWarning("Local Dimming feature is not supported");
+            _localDimming = false;
+        }
+        else
+        {
+            OVRPlugin.localDimming = _localDimming;
+        }
+
         OVRManagerinitialized = true;
 
+    }
+
+    private void InitPermissionRequest()
+    {
+        var permissions = new HashSet<OVRPermissionsRequester.Permission>();
+
+        if (requestBodyTrackingPermissionOnStartup)
+        {
+            permissions.Add(OVRPermissionsRequester.Permission.BodyTracking);
+        }
+
+        if (requestFaceTrackingPermissionOnStartup)
+        {
+            permissions.Add(OVRPermissionsRequester.Permission.FaceTracking);
+        }
+
+        if (requestEyeTrackingPermissionOnStartup)
+        {
+            permissions.Add(OVRPermissionsRequester.Permission.EyeTracking);
+        }
+
+        OVRPermissionsRequester.Request(permissions);
     }
 
     private void Awake()
     {
 #if !USING_XR_SDK
-        //For legacy, we should initialize OVRManager in all cases.
-        //For now, in XR SDK, only initialize if OVRPlugin is initialized.
-        InitOVRManager();
+		//For legacy, we should initialize OVRManager in all cases.
+		//For now, in XR SDK, only initialize if OVRPlugin is initialized.
+		InitOVRManager();
 #else
         if (OVRPlugin.initialized)
             InitOVRManager();
@@ -1547,13 +1872,13 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 #if USING_XR_SDK
         else if (currentDisplaySubsystem != null && currentDisplaySubsystemDescriptor != null && currentDisplaySubsystem.running)
 #else
-        else if (Settings.enabled)
+		else if (Settings.enabled)
 #endif
         {
 #if USING_XR_SDK
             string loadedXRDeviceName = currentDisplaySubsystemDescriptor.id;
 #else
-            string loadedXRDeviceName = Settings.loadedDeviceName;
+			string loadedXRDeviceName = Settings.loadedDeviceName;
 #endif
             if (loadedXRDeviceName == OPENVR_UNITY_NAME_STR)
                 loadedXRDevice = XRDevice.OpenVR;
@@ -1673,8 +1998,8 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         if (useRecommendedMSAALevel && QualitySettings.antiAliasing != display.recommendedMSAALevel)
         {
             Debug.Log("The current MSAA level is " + QualitySettings.antiAliasing +
-            ", but the recommended MSAA level is " + display.recommendedMSAALevel +
-            ". Switching to the recommended level.");
+                      ", but the recommended MSAA level is " + display.recommendedMSAALevel +
+                      ". Switching to the recommended level.");
 
             QualitySettings.antiAliasing = display.recommendedMSAALevel;
         }
@@ -1914,6 +2239,7 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 #endif
 
         UpdateInsightPassthrough(isInsightPassthroughEnabled);
+
     }
 
     private void UpdateHMDEvents()
@@ -1923,11 +2249,73 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
             switch(eventDataBuffer.EventType)
             {
                 case OVRPlugin.EventType.DisplayRefreshRateChanged:
-                    if(DisplayRefreshRateChanged != null)
+                    if (DisplayRefreshRateChanged != null)
                     {
-                        float FromRefreshRate = BitConverter.ToSingle(eventDataBuffer.EventData, 0);
-                        float ToRefreshRate = BitConverter.ToSingle(eventDataBuffer.EventData, 4);
-                        DisplayRefreshRateChanged(FromRefreshRate, ToRefreshRate);
+                        var data = OVRDeserialize.ByteArrayToStructure<OVRDeserialize.DisplayRefreshRateChangedData>(eventDataBuffer.EventData);
+                        DisplayRefreshRateChanged(data.FromRefreshRate, data.ToRefreshRate);
+                    }
+                    break;
+                case OVRPlugin.EventType.SpatialAnchorCreateComplete:
+                    if (SpatialAnchorCreateComplete != null)
+                    {
+                        var data =
+                            OVRDeserialize.ByteArrayToStructure<OVRDeserialize.SpatialAnchorCreateCompleteData>(
+                                eventDataBuffer.EventData);
+                        SpatialAnchorCreateComplete(data.RequestId, data.Result >= 0, data.Space, data.Uuid);
+                    }
+                    break;
+                case OVRPlugin.EventType.SpaceSetComponentStatusComplete:
+                    if (SpaceSetComponentStatusComplete != null)
+                    {
+                        var data = OVRDeserialize
+                            .ByteArrayToStructure<OVRDeserialize.SpaceSetComponentStatusCompleteData>(eventDataBuffer
+                                .EventData);
+                        SpaceSetComponentStatusComplete(data.RequestId, data.Result >= 0, data.Space, data.Uuid, data.ComponentType, data.Enabled != 0);
+                    }
+                    break;
+                case OVRPlugin.EventType.SpaceQueryResults:
+                    if (SpaceQueryResults != null)
+                    {
+                        var data =
+                            OVRDeserialize.ByteArrayToStructure<OVRDeserialize.SpaceQueryResultsData>(eventDataBuffer
+                                .EventData);
+                        SpaceQueryResults(data.RequestId);
+                    }
+                    break;
+                case OVRPlugin.EventType.SpaceQueryComplete:
+                    if (SpaceQueryComplete != null)
+                    {
+                        var data =
+                            OVRDeserialize.ByteArrayToStructure<OVRDeserialize.SpaceQueryCompleteData>(eventDataBuffer
+                                .EventData);
+                        SpaceQueryComplete(data.RequestId, data.Result >= 0);
+                    }
+                    break;
+                case OVRPlugin.EventType.SpaceSaveComplete:
+                    if (SpaceSaveComplete != null)
+                    {
+                        var data =
+                            OVRDeserialize.ByteArrayToStructure<OVRDeserialize.SpaceSaveCompleteData>(eventDataBuffer
+                                .EventData);
+                        SpaceSaveComplete(data.RequestId, data.Space, data.Result >= 0, data.Uuid);
+                    }
+                    break;
+                case OVRPlugin.EventType.SpaceEraseComplete:
+                    if (SpaceEraseComplete != null)
+                    {
+                        var data =
+                            OVRDeserialize.ByteArrayToStructure<OVRDeserialize.SpaceEraseCompleteData>(eventDataBuffer
+                                .EventData);
+                        SpaceEraseComplete(data.RequestId, data.Result >= 0, data.Uuid, data.Location);
+                    }
+                    break;
+                case OVRPlugin.EventType.SceneCaptureComplete:
+                    if (SceneCaptureComplete != null)
+                    {
+                        var data =
+                            OVRDeserialize.ByteArrayToStructure<OVRDeserialize.SceneCaptureCompleteData>(eventDataBuffer
+                                .EventData);
+                        SceneCaptureComplete(data.RequestId, data.Result >= 0);
                     }
                     break;
                 default:
@@ -1936,7 +2324,9 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         }
     }
 
+
     private static bool multipleMainCameraWarningPresented = false;
+    private static bool suppressUnableToFindMainCameraMessage = false;
     private static WeakReference<Camera> lastFoundMainCamera = null;
     private static Camera FindMainCamera() {
 
@@ -1944,6 +2334,7 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         if (lastFoundMainCamera != null &&
             lastFoundMainCamera.TryGetTarget(out lastCamera) &&
             lastCamera != null &&
+            lastCamera.isActiveAndEnabled &&
             lastCamera.CompareTag("MainCamera"))
         {
             return lastCamera;
@@ -1987,12 +2378,15 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 
         if (result != null)
         {
-            Debug.LogFormat("[OVRManager] mainCamera found for MRC: ", result.gameObject.name);
+            Debug.LogFormat("[OVRManager] mainCamera found for MRC: {0}", result.gameObject.name);
+            suppressUnableToFindMainCameraMessage = false;
         }
-        else
+        else if (!suppressUnableToFindMainCameraMessage)
         {
-            Debug.Log("[OVRManager] unable to find a vaild camera");
+            Debug.Log("[OVRManager] unable to find a valid camera");
+            suppressUnableToFindMainCameraMessage = true;
         }
+
         lastFoundMainCamera = new WeakReference<Camera>(result);
         return result;
     }
@@ -2009,6 +2403,14 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     private void LateUpdate()
     {
         OVRHaptics.Process();
+
+        if (m_SpaceWarpEnabled && m_AppSpaceTransform != null)
+        {
+#if USING_XR_SDK_OCULUS
+            OculusXRPlugin.SetAppSpacePosition(m_AppSpaceTransform.position.x, m_AppSpaceTransform.position.y, m_AppSpaceTransform.position.z);
+            OculusXRPlugin.SetAppSpaceRotation(m_AppSpaceTransform.rotation.x, m_AppSpaceTransform.rotation.y, m_AppSpaceTransform.rotation.z, m_AppSpaceTransform.rotation.w);
+#endif
+        }
     }
 
     private void FixedUpdate()
@@ -2019,6 +2421,9 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
     private void OnDestroy()
     {
         Debug.Log("[OVRManager] OnDestroy");
+#if UNITY_EDITOR
+        OVRPlugin.SetLogCallback2(null);
+#endif
         OVRManagerinitialized = false;
     }
 
@@ -2087,35 +2492,35 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
             staticMrcSettings.ReadFrom(configuration);
 
 #if OVR_ANDROID_MRC
-            bool mediaInitialized = OVRPlugin.Media.Initialize();
-            Debug.Log(mediaInitialized ? "OVRPlugin.Media initialized" : "OVRPlugin.Media not initialized");
-            if (mediaInitialized)
-            {
-                var audioConfig = AudioSettings.GetConfiguration();
-                if(audioConfig.sampleRate > 0)
-                {
-                    OVRPlugin.Media.SetMrcAudioSampleRate(audioConfig.sampleRate);
-                    Debug.LogFormat("[MRC] SetMrcAudioSampleRate({0})", audioConfig.sampleRate);
-                }
+			bool mediaInitialized = OVRPlugin.Media.Initialize();
+			Debug.Log(mediaInitialized ? "OVRPlugin.Media initialized" : "OVRPlugin.Media not initialized");
+			if (mediaInitialized)
+			{
+				var audioConfig = AudioSettings.GetConfiguration();
+				if (audioConfig.sampleRate > 0)
+				{
+					OVRPlugin.Media.SetMrcAudioSampleRate(audioConfig.sampleRate);
+					Debug.LogFormat("[MRC] SetMrcAudioSampleRate({0})", audioConfig.sampleRate);
+				}
 
-                OVRPlugin.Media.SetMrcInputVideoBufferType(OVRPlugin.Media.InputVideoBufferType.TextureHandle);
-                Debug.LogFormat("[MRC] Active InputVideoBufferType:{0}", OVRPlugin.Media.GetMrcInputVideoBufferType());
-                if (configuration.mrcActivationMode == MrcActivationMode.Automatic)
-                {
-                    OVRPlugin.Media.SetMrcActivationMode(OVRPlugin.Media.MrcActivationMode.Automatic);
-                    Debug.LogFormat("[MRC] ActivateMode: Automatic");
-                }
-                else if (configuration.mrcActivationMode == MrcActivationMode.Disabled)
-                {
-                    OVRPlugin.Media.SetMrcActivationMode(OVRPlugin.Media.MrcActivationMode.Disabled);
-                    Debug.LogFormat("[MRC] ActivateMode: Disabled");
-                }
-                if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Vulkan)
-                {
-                    OVRPlugin.Media.SetAvailableQueueIndexVulkan(1);
-                    OVRPlugin.Media.SetMrcFrameImageFlipped(true);
-                }
-            }
+				OVRPlugin.Media.SetMrcInputVideoBufferType(OVRPlugin.Media.InputVideoBufferType.TextureHandle);
+				Debug.LogFormat("[MRC] Active InputVideoBufferType:{0}", OVRPlugin.Media.GetMrcInputVideoBufferType());
+				if (configuration.mrcActivationMode == MrcActivationMode.Automatic)
+				{
+					OVRPlugin.Media.SetMrcActivationMode(OVRPlugin.Media.MrcActivationMode.Automatic);
+					Debug.LogFormat("[MRC] ActivateMode: Automatic");
+				}
+				else if (configuration.mrcActivationMode == MrcActivationMode.Disabled)
+				{
+					OVRPlugin.Media.SetMrcActivationMode(OVRPlugin.Media.MrcActivationMode.Disabled);
+					Debug.LogFormat("[MRC] ActivateMode: Disabled");
+				}
+				if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Vulkan)
+				{
+					OVRPlugin.Media.SetAvailableQueueIndexVulkan(1);
+					OVRPlugin.Media.SetMrcFrameImageFlipped(true);
+				}
+			}
 #endif
             staticPrevEnableMixedRealityCapture = false;
 
@@ -2135,53 +2540,40 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
         }
 
 #if OVR_ANDROID_MRC
-        configuration.enableMixedReality = OVRPlugin.Media.GetInitialized() && OVRPlugin.Media.IsMrcActivated();
-        configuration.compositionMethod = CompositionMethod.External;       // force external composition on Android MRC
+		configuration.enableMixedReality = OVRPlugin.Media.GetInitialized() && OVRPlugin.Media.IsMrcActivated();
+		configuration.compositionMethod = CompositionMethod.External;       // force external composition on Android MRC
 
-        if (OVRPlugin.Media.GetInitialized())
-        {
-            OVRPlugin.Media.Update();
-        }
+		if (OVRPlugin.Media.GetInitialized())
+		{
+			OVRPlugin.Media.Update();
+		}
 #endif
 
-        if (configuration.enableMixedReality && !staticPrevEnableMixedRealityCapture)
-        {
-            OVRPlugin.SendEvent("mixed_reality_capture", "activated");
-            Debug.Log("MixedRealityCapture: activate");
-        }
-
-        if (!configuration.enableMixedReality && staticPrevEnableMixedRealityCapture)
-        {
-            Debug.Log("MixedRealityCapture: deactivate");
-        }
-
-        if (configuration.enableMixedReality || staticPrevEnableMixedRealityCapture)
+        if (configuration.enableMixedReality)
         {
             Camera mainCamera = FindMainCamera();
             if (mainCamera != null)
             {
+                if (!staticPrevEnableMixedRealityCapture)
+                {
+                    OVRPlugin.SendEvent("mixed_reality_capture", "activated");
+                    Debug.Log("MixedRealityCapture: activate");
+                    staticPrevEnableMixedRealityCapture = true;
+                }
+                OVRMixedReality.Update(gameObject, mainCamera, configuration, trackingOrigin);
                 suppressDisableMixedRealityBecauseOfNoMainCameraWarning = false;
-
-                if (configuration.enableMixedReality)
-                {
-                    OVRMixedReality.Update(gameObject, mainCamera, configuration, trackingOrigin);
-                }
-
-                if (staticPrevEnableMixedRealityCapture && !configuration.enableMixedReality)
-                {
-                    OVRMixedReality.Cleanup();
-                }
-
-                staticPrevEnableMixedRealityCapture = configuration.enableMixedReality;
             }
-            else
+            else if (!suppressDisableMixedRealityBecauseOfNoMainCameraWarning)
             {
-                if (!suppressDisableMixedRealityBecauseOfNoMainCameraWarning)
-                {
-                    Debug.LogWarning("Main Camera is not set, Mixed Reality disabled");
-                    suppressDisableMixedRealityBecauseOfNoMainCameraWarning = true;
-                }
+                Debug.LogWarning("Main Camera is not set, Mixed Reality disabled");
+                suppressDisableMixedRealityBecauseOfNoMainCameraWarning = true;
             }
+        }
+        else if (staticPrevEnableMixedRealityCapture)
+        {
+            Debug.Log("MixedRealityCapture: deactivate");
+            staticPrevEnableMixedRealityCapture = false;
+            OVRMixedReality.Cleanup();
         }
 
         staticMrcSettings.ReadFrom(configuration);
@@ -2197,10 +2589,10 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
             OVRMixedReality.Cleanup();
 
 #if OVR_ANDROID_MRC
-            if (OVRPlugin.Media.GetInitialized())
-            {
-                OVRPlugin.Media.Shutdown();
-            }
+			if (OVRPlugin.Media.GetInitialized())
+			{
+				OVRPlugin.Media.Shutdown();
+			}
 #endif
             staticMixedRealityCaptureInitialized = false;
         }
@@ -2208,56 +2600,82 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
 
 #endif
 
-    private static bool _isInsightPassthroughInitialized = false;
-    private static bool _lastInsightPassthroughInitFailed = false;
+
+    enum PassthroughInitializationState
+    {
+        Unspecified,
+        Pending,
+        Initialized,
+        Failed
+    };
+    private static PassthroughInitializationState _passthroughInitializationState = PassthroughInitializationState.Unspecified;
+    private static bool PassthroughInitializedOrPending(PassthroughInitializationState state)
+    {
+        return state == PassthroughInitializationState.Pending || state == PassthroughInitializationState.Initialized;
+    }
     private static bool InitializeInsightPassthrough()
     {
-        if (_isInsightPassthroughInitialized)
+        if (PassthroughInitializedOrPending(_passthroughInitializationState))
             return false;
 
         bool passthroughResult = OVRPlugin.InitializeInsightPassthrough();
-        _isInsightPassthroughInitialized = passthroughResult;
-        _lastInsightPassthroughInitFailed = !passthroughResult;
-        if (!passthroughResult)
+        OVRPlugin.Result result = OVRPlugin.GetInsightPassthroughInitializationState();
+        if (result < 0)
         {
-            Debug.LogError("Failed to initialize Insight Passthrough. Passthrough will be unavailable.");
+            _passthroughInitializationState = PassthroughInitializationState.Failed;
+            Debug.LogError("Failed to initialize Insight Passthrough. Passthrough will be unavailable. Error " + result.ToString() + ".");
         }
-        return _isInsightPassthroughInitialized;
+        else
+        {
+            if (result == OVRPlugin.Result.Success_Pending)
+            {
+                _passthroughInitializationState = PassthroughInitializationState.Pending;
+            }
+            else
+            {
+                _passthroughInitializationState = PassthroughInitializationState.Initialized;
+            }
+        }
+        return PassthroughInitializedOrPending(_passthroughInitializationState);
     }
 
     private static void ShutdownInsightPassthrough()
     {
-        if (_isInsightPassthroughInitialized)
+        if (PassthroughInitializedOrPending(_passthroughInitializationState))
         {
             if (OVRPlugin.ShutdownInsightPassthrough())
             {
-                _isInsightPassthroughInitialized = false;
+                _passthroughInitializationState = PassthroughInitializationState.Unspecified;
             }
             else
             {
                 // If it did not shut down, it may already be deinitialized.
-                _isInsightPassthroughInitialized = OVRPlugin.IsInsightPassthroughInitialized();
-                if (_isInsightPassthroughInitialized)
+                bool isInitialized = OVRPlugin.IsInsightPassthroughInitialized();
+                if (isInitialized)
                 {
                     Debug.LogError("Failed to shut down passthrough. It may be still in use.");
+                }
+                else
+                {
+                    _passthroughInitializationState = PassthroughInitializationState.Unspecified;
                 }
             }
         }
         else
         {
             // Allow initialization to proceed on restart.
-            _lastInsightPassthroughInitFailed = false;
+            _passthroughInitializationState = PassthroughInitializationState.Unspecified;
         }
     }
 
     private static void UpdateInsightPassthrough(bool shouldBeEnabled)
     {
-        if (shouldBeEnabled != _isInsightPassthroughInitialized)
+        if (shouldBeEnabled != PassthroughInitializedOrPending(_passthroughInitializationState))
         {
             if (shouldBeEnabled)
             {
                 // Prevent attempts to initialize on every update if failed once.
-                if (!_lastInsightPassthroughInitFailed)
+                if (_passthroughInitializationState != PassthroughInitializationState.Failed)
                     InitializeInsightPassthrough();
             }
             else
@@ -2265,13 +2683,83 @@ public class OVRManager : MonoBehaviour, OVRMixedRealityCaptureConfiguration
                 ShutdownInsightPassthrough();
             }
         }
+        else
+        {
+            // If the initialization was pending, it may have successfully completed.
+            if (_passthroughInitializationState == PassthroughInitializationState.Pending)
+            {
+                OVRPlugin.Result result = OVRPlugin.GetInsightPassthroughInitializationState();
+                if (result == OVRPlugin.Result.Success)
+                {
+                    _passthroughInitializationState = PassthroughInitializationState.Initialized;
+                }
+                else if (result < 0)
+                {
+                    _passthroughInitializationState = PassthroughInitializationState.Failed;
+                    Debug.LogError("Failed to initialize Insight Passthrough. Passthrough will be unavailable. Error " + result.ToString() + ".");
+                }
+            }
+        }
     }
 
+
+    /// <summary>
+    /// Checks whether Passthrough is supported by the system. This method should only be called when the XR Plug-in is initialized.
+    /// </summary>
+    public static bool IsInsightPassthroughSupported()
+    {
+        return OVRPlugin.IsInsightPassthroughSupported();
+    }
+
+    /// <summary>
+    /// Specify if Insight Passthrough should be enabled.
+    /// Passthrough layers can only be used if passthrough is enabled.
+    /// </summary>
+    public class PassthroughCapabilities {
+        /// <summary>
+        /// Indicates that Passthrough is available on the current system.
+        /// </summary>
+        public bool SupportsPassthrough { get; }
+
+        /// <summary>
+        /// Indicates that the system can show Passthrough with realistic colors.
+        /// </summary>
+        public bool SupportsColorPassthrough { get; }
+
+        public PassthroughCapabilities(bool supportsPassthrough, bool supportsColorPassthrough)
+        {
+            SupportsPassthrough = supportsPassthrough;
+            SupportsColorPassthrough = supportsColorPassthrough;
+        }
+    }
+
+    /// <summary>
+    /// Returns information about Passthrough capabilities provided by the system. This method should only be called when the XR Plug-in is initialized.
+    /// </summary>
+    public static PassthroughCapabilities GetPassthroughCapabilities() {
+        OVRPlugin.PassthroughCapabilityFlags capabilityFlags = OVRPlugin.GetPassthroughCapabilityFlags();
+        return new PassthroughCapabilities(
+            supportsPassthrough: (capabilityFlags & OVRPlugin.PassthroughCapabilityFlags.Passthrough) == OVRPlugin.PassthroughCapabilityFlags.Passthrough,
+            supportsColorPassthrough: (capabilityFlags & OVRPlugin.PassthroughCapabilityFlags.Color) == OVRPlugin.PassthroughCapabilityFlags.Color
+        );
+    }
+
+    /// Checks whether Passthrough is initialized.
+    /// \return Boolean value to indicate the current state of passthrough. If the value returned is true, Passthrough is initialized.
     public static bool IsInsightPassthroughInitialized() {
-        return _isInsightPassthroughInitialized;
+        return _passthroughInitializationState == PassthroughInitializationState.Initialized;
     }
 
+    /// Checks whether Passthrough has failed initialization.
+    /// \return Boolean value to indicate the passthrough initialization failed status. If the value returned is true, Passthrough has failed the initialization.
     public static bool HasInsightPassthroughInitFailed() {
-        return _lastInsightPassthroughInitFailed;
+        return _passthroughInitializationState == PassthroughInitializationState.Failed;
+    }
+
+    /// Checks whether Passthrough is in the process of initialization.
+    /// \return Boolean value to indicate the current state of passthrough. If the value returned is true, Passthrough is initializing.
+    public static bool IsInsightPassthroughInitPending()
+    {
+        return _passthroughInitializationState == PassthroughInitializationState.Pending;
     }
 }

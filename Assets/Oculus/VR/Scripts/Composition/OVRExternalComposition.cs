@@ -1,14 +1,22 @@
-/************************************************************************************
-Copyright : Copyright (c) Facebook Technologies, LLC and its affiliates. All rights reserved.
-
-Your use of this SDK or tool is subject to the Oculus SDK License Agreement, available at
-https://developer.oculus.com/licenses/oculussdk/
-
-Unless required by applicable law or agreed to in writing, the Utilities SDK distributed
-under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
-ANY KIND, either express or implied. See the License for the specific language governing
-permissions and limitations under the License.
-************************************************************************************/
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * Licensed under the Oculus SDK License Agreement (the "License");
+ * you may not use the Oculus SDK except in compliance with the License,
+ * which is provided at the time of installation or download, or which
+ * otherwise accompanies this software in either electronic or hard copy form.
+ *
+ * You may obtain a copy of the License at
+ *
+ * https://developer.oculus.com/licenses/oculussdk/
+ *
+ * Unless required by applicable law or agreed to in writing, the Oculus SDK
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #if UNITY_ANDROID && !UNITY_EDITOR
 #define OVR_ANDROID_MRC
@@ -35,6 +43,9 @@ public class OVRExternalComposition : OVRComposition
 	public GameObject backgroundCameraGameObject = null;
 	public Camera backgroundCamera = null;
 #if OVR_ANDROID_MRC
+	private bool skipFrame = false;
+	private float fpsThreshold = 80.0f;
+	private bool isFrameSkipped = true;
 	public bool renderCombinedFrame = false;
 	public AudioListener audioListener;
 	public OVRMRAudioFilter audioFilter;
@@ -69,6 +80,8 @@ public class OVRExternalComposition : OVRComposition
 			cameraPoseTimeArray[i] = 0.0;
 		}
 
+		skipFrame = OVRManager.display.displayFrequency > fpsThreshold;
+		OVRManager.DisplayRefreshRateChanged += DisplayRefreshRateChanged;
 		frameIndex = 0;
 		lastMrcEncodeFrameSyncId = -1;
 
@@ -202,23 +215,36 @@ public class OVRExternalComposition : OVRComposition
 	}
 
 #if OVR_ANDROID_MRC
-	private void RefreshAudioFilter()
+	private void RefreshAudioFilter(Camera mainCamera)
 	{
-		if (cameraRig != null && (audioListener == null || !audioListener.enabled || !audioListener.gameObject.activeInHierarchy))
+		if (audioListener == null || !audioListener.enabled || !audioListener.gameObject.activeInHierarchy)
 		{
 			CleanupAudioFilter();
 
-			AudioListener tmpAudioListener = cameraRig.centerEyeAnchor.gameObject.activeInHierarchy ? cameraRig.centerEyeAnchor.GetComponent<AudioListener>() : null;
-			if (tmpAudioListener != null && !tmpAudioListener.enabled) tmpAudioListener = null;
-			if (tmpAudioListener == null)
+			// first try cameraRig
+			AudioListener tmpAudioListener = cameraRig != null && cameraRig.centerEyeAnchor.gameObject.activeInHierarchy
+				? cameraRig.centerEyeAnchor.GetComponent<AudioListener>()
+				: null;
+
+			// second try mainCamera
+			if (tmpAudioListener == null || !tmpAudioListener.enabled)
 			{
-				if (Camera.main != null && Camera.main.gameObject.activeInHierarchy)
-				{
-					tmpAudioListener = Camera.main.GetComponent<AudioListener>();
-					if (tmpAudioListener != null && !tmpAudioListener.enabled) tmpAudioListener = null;
-				}
+				tmpAudioListener = mainCamera != null && mainCamera.gameObject.activeInHierarchy
+					? mainCamera.GetComponent<AudioListener>()
+					: null;
 			}
-			if (tmpAudioListener == null)
+
+			// third try Camera.main (expensive)
+			if (tmpAudioListener == null || !tmpAudioListener.enabled)
+			{
+				mainCamera = Camera.main;
+				tmpAudioListener = mainCamera != null && mainCamera.gameObject.activeInHierarchy
+					? mainCamera.GetComponent<AudioListener>()
+					: null;
+			}
+
+			// fourth, search for all AudioListeners (very expensive)
+			if (tmpAudioListener == null || !tmpAudioListener.enabled)
 			{
 				Object[] allListeners = Object.FindObjectsOfType<AudioListener>();
 				foreach (var l in allListeners)
@@ -231,18 +257,14 @@ public class OVRExternalComposition : OVRComposition
 					}
 				}
 			}
-			if (tmpAudioListener == null)
+			if (tmpAudioListener == null || !tmpAudioListener.enabled)
 			{
 				Debug.LogWarning("[OVRExternalComposition] No AudioListener in scene");
 			}
 			else
 			{
 				Debug.LogFormat("[OVRExternalComposition] AudioListener found, obj {0}", tmpAudioListener.gameObject.name);
-			}
-			audioListener = tmpAudioListener;
-
-			if(audioListener != null)
-			{
+				audioListener = tmpAudioListener;
 				audioFilter = audioListener.gameObject.AddComponent<OVRMRAudioFilter>();
 				audioFilter.composition = this;
 				Debug.LogFormat("OVRMRAudioFilter added");
@@ -314,6 +336,13 @@ public class OVRExternalComposition : OVRComposition
 
 	public override void Update(GameObject gameObject, Camera mainCamera, OVRMixedRealityCaptureConfiguration configuration, OVRManager.TrackingOrigin trackingOrigin)
 	{
+#if OVR_ANDROID_MRC
+		if (skipFrame && OVRPlugin.Media.IsCastingToRemoteClient()) {
+			isFrameSkipped = !isFrameSkipped;
+			if(isFrameSkipped) { return; }
+		}
+#endif
+
 		RefreshCameraObjects(gameObject, mainCamera, configuration);
 
 		OVRPlugin.SetHandNodePoseStateLatency(0.0);     // the HandNodePoseStateLatency doesn't apply to the external composition. Always enforce it to 0.0
@@ -327,7 +356,7 @@ public class OVRExternalComposition : OVRComposition
 		OVRPlugin.Media.SetMrcHeadsetControllerPose(head.ToPosef(), leftC.ToPosef(), rightC.ToPosef());
 
 #if OVR_ANDROID_MRC
-		RefreshAudioFilter();
+		RefreshAudioFilter(mainCamera);
 
 		int drawTextureIndex = (frameIndex / 2) % 2;
 		int castTextureIndex = 1 - drawTextureIndex;
@@ -373,7 +402,7 @@ public class OVRExternalComposition : OVRComposition
 				OVRMixedReality.fakeCameraEyeLevelPosition :
 				OVRMixedReality.fakeCameraFloorLevelPosition;
 			trackingSpacePose.orientation = OVRMixedReality.fakeCameraRotation;
-			worldSpacePose = OVRExtensions.ToWorldSpacePose(trackingSpacePose);
+			worldSpacePose = OVRExtensions.ToWorldSpacePose(trackingSpacePose, mainCamera);
 
 			backgroundCamera.fieldOfView = OVRMixedReality.fakeCameraFov;
 			backgroundCamera.aspect = OVRMixedReality.fakeCameraAspect;
@@ -414,7 +443,7 @@ public class OVRExternalComposition : OVRComposition
 				}
 				else
 				{
-					OVRPose worldSpacePose = ComputeCameraWorldSpacePose(extrinsics);
+					OVRPose worldSpacePose = ComputeCameraWorldSpacePose(extrinsics, mainCamera);
 					backgroundCamera.transform.FromOVRPose(worldSpacePose);
 					foregroundCamera.transform.FromOVRPose(worldSpacePose);
 				}
@@ -477,6 +506,7 @@ public class OVRExternalComposition : OVRComposition
 			}
 		}
 
+		OVRManager.DisplayRefreshRateChanged -= DisplayRefreshRateChanged;
 		frameIndex = 0;
 #endif
 	}
@@ -514,6 +544,14 @@ public class OVRExternalComposition : OVRComposition
 			cachedAudioData.Clear();
 		}
 	}
+
+#if OVR_ANDROID_MRC
+
+	private void DisplayRefreshRateChanged(float fromRefreshRate, float toRefreshRate)
+	{
+		skipFrame = toRefreshRate > fpsThreshold;
+	}
+#endif
 
 }
 

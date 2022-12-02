@@ -27,11 +27,14 @@ namespace Oculus.Avatar2
         /// Skeleton version number.
         public Int32 skeletonVersion;
 
+        /// Number of bones in the skeleton.
+        public Int32 numBones;
+
         /// Avatar body modality (sitting vs standing).
         public CAPI.ovrAvatar2TrackingBodyModality bodyModality;
 
-        /// Number of bones in the skeleton.
-        public Int32 numBones;
+        /// Scale of hand
+        public readonly float[] handScale = new float[(int)CAPI.ovrAvatar2Side.Count];
 
         #region Native Conversions
         /**
@@ -45,11 +48,13 @@ namespace Oculus.Avatar2
             {
                 inputTrackingState = inputTrackingState,
                 inputControlState = inputControlState,
-                skeletonVersion = skeletonVersion,
-                bodyModality = bodyModality,
                 leftHandInputType = handInputType[(int)CAPI.ovrAvatar2Side.Left],
                 rightHandInputType = handInputType[(int)CAPI.ovrAvatar2Side.Right],
-                numBones = numBones
+                skeletonVersion = skeletonVersion,
+                numBones = numBones,
+                bodyModality = bodyModality,
+                leftHandScale = handScale[(int)CAPI.ovrAvatar2Side.Left],
+                rightHandScale = handScale[(int)CAPI.ovrAvatar2Side.Right],
             };
         }
 
@@ -62,11 +67,13 @@ namespace Oculus.Avatar2
         {
             inputTrackingState = native.inputTrackingState;
             inputControlState = native.inputControlState;
-            skeletonVersion = native.skeletonVersion;
-            bodyModality = native.bodyModality;
             handInputType[(int)CAPI.ovrAvatar2Side.Left] = native.leftHandInputType;
             handInputType[(int)CAPI.ovrAvatar2Side.Right] = native.rightHandInputType;
+            skeletonVersion = native.skeletonVersion;
             numBones = native.numBones;
+            bodyModality = native.bodyModality;
+            handScale[(int)CAPI.ovrAvatar2Side.Left] = native.leftHandScale;
+            handScale[(int)CAPI.ovrAvatar2Side.Right] = native.rightHandScale;
 
         }
         #endregion

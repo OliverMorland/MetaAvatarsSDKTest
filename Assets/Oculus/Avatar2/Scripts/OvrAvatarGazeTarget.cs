@@ -29,7 +29,8 @@ namespace Oculus.Avatar2
     {
         private static CAPI.ovrAvatar2Id nextId;
 
-        [SerializeField] private CAPI.ovrAvatar2GazeTargetType _targetType = CAPI.ovrAvatar2GazeTargetType.Object;
+        [SerializeField]
+        private CAPI.ovrAvatar2GazeTargetType _targetType = CAPI.ovrAvatar2GazeTargetType.Object;
 
         private bool _targetCreated;
         private Transform _transform;
@@ -61,7 +62,7 @@ namespace Oculus.Avatar2
 
         #region Unity Events
 
-        private void Awake()
+        protected virtual void Awake()
         {
             _transform = transform;
             Target = new CAPI.ovrAvatar2GazeTarget
@@ -71,17 +72,17 @@ namespace Oculus.Avatar2
             };
         }
 
-        private void OnEnable()
+        protected virtual void OnEnable()
         {
             CreateTarget();
         }
 
-        private void OnDisable()
+        protected virtual void OnDisable()
         {
             DestroyTarget();
         }
 
-        private void OnValidate()
+        protected virtual void OnValidate()
         {
             // Trigger type changes.
             TargetType = _targetType;

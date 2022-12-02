@@ -21,6 +21,7 @@ MonoBehaviour:
   NameTextureParameter_normalTexture: _BumpMap
   NameTextureParameter_occlusionTexture: _PropertiesMap
   NameTextureParameter_emissiveTexture: _EmissiveMap
+  NameTextureParameter_flowTexture: _FlowMap
   NameColorParameter_BaseColorFactor: _Color
   UseColorParameter_BaseColorFactor: 0
   NameFloatParameter_MetallicFactor: 
@@ -39,12 +40,17 @@ MonoBehaviour:
   - _SHADER_TYPE_SUBMESH
   - _LIGHTING_SYSTEM_UNITY
   - _LIGHTING_SYSTEM_VERTEX_GI
+  - MATERIAL_MODE_TEXTURE
+  - MATERIAL_MODE_VERTEX
   KeywordsToEnable:
   - _SHADER_TYPE_TEXTURED
   - _LIGHTING_SYSTEM_UNITY
+  - MATERIAL_MODE_TEXTURE
   NameFloatConstants:
   - _Shader_Type
   - _Lighting_System
+  - Material_Mode
   ValueFloatConstants:
   - 6
+  - 0
   - 0

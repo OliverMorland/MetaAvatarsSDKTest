@@ -21,6 +21,7 @@ MonoBehaviour:
   NameTextureParameter_normalTexture: u_NormalSampler
   NameTextureParameter_occlusionTexture: u_OcclusionSampler
   NameTextureParameter_emissiveTexture: u_EmissiveSampler
+  NameTextureParameter_flowTexture: _FlowMap
   NameColorParameter_BaseColorFactor: _Color
   UseColorParameter_BaseColorFactor: 0
   NameFloatParameter_MetallicFactor: _Metallic
@@ -32,13 +33,18 @@ MonoBehaviour:
   KeywordsEnumerations:
   - BRDF_LUT_MODE_ON
   - BRDF_LUT_MODE_OFF
+  - MATERIAL_MODE_TEXTURE
+  - MATERIAL_MODE_VERTEX
   KeywordsToEnable:
   - BRDF_LUT_MODE_OFF
+  - MATERIAL_MODE_TEXTURE
   NameFloatConstants:
   - u_F0Factor
   - u_DiffuseSmoothingFactor
   - BRDF_LUT_Mode
+  - Material_Mode
   ValueFloatConstants:
   - 0
   - 4
   - 1
+  - 0

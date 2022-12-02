@@ -1,11 +1,12 @@
 using System;
 using System.Runtime.InteropServices;
 
+using Unity.Collections;
+
 namespace Oculus.Avatar2
 {
     public partial class CAPI
     {
-
         //-----------------------------------------------------------------
         // For the following ovrAvatar2Primitive_GetVertex* and ovrAvatar2MorphTarget_GetVertex* functions,
         // the buffer, bytes, and stride can be set to 0 to check the existence of that attribute.
@@ -17,6 +18,8 @@ namespace Oculus.Avatar2
         // Diagnostic
         //
         //
+
+        private const string assetLogScope = "OvrAvatarAPI_Asset";
 
         // Get the number of assets which are still loading
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
@@ -35,31 +38,49 @@ namespace Oculus.Avatar2
         public enum ovrAvatar2LoadRequestState : Int32
         {
             /// Invalid state
-            None = 0,
+            None = 0
+
+            ,
 
             /// User Avatar specification requested
-            PendingSpecification,
+            PendingSpecification
+
+            ,
 
             /// CDN asset load in progress (network or from cache)
-            CdnLoad,
+            CdnLoad
+
+            ,
 
             /// Loading assets from URI
-            LoadFromUri,
+            LoadFromUri
+
+            ,
 
             /// Loading assets from memory
-            LoadFromMemory,
+            LoadFromMemory
+
+            ,
 
             /// Parsing asset files after load
-            ParseAsset,
+            ParseAsset
+
+            ,
 
             /// Awaiting "ready to render" from client
-            ClientLoad,
+            ClientLoad
+
+            ,
 
             /// Load successful; assets have been applied to the entity. hierarchyVersion/allNodesVersion likely changed
-            Success,
+            Success
+
+            ,
 
             /// Failed; see LoadFailedReason for details
-            Failed,
+            Failed
+
+            ,
 
             /// Cancelled before completion (e.g. entity destroyed)
             Cancelled
@@ -67,27 +88,32 @@ namespace Oculus.Avatar2
 
         public enum ovrAvatar2LoadRequestFailure : Int32
         {
-            None = 0,
-            CdnLoadInProgress,
-            NoAssetProfile,
-            SpecRequestFailed,
-            SpecHadInvalidAnimSet,
-            SpecHadInvalidModel,
-            InvalidUri,
-            AssetNotFound,
-            MismatchedLoadFilters,
-            HttpLoadFailed,
-            CacheLoadFailed,
-            DiskLoadFailed,
-            ParseFailed,
-            Unknown,
+            None = 0
+            , CdnLoadInProgress
+            , NoAssetProfile
+            , SpecRequestFailed
+            , SpecParseFailed
+            , SpecRequestCancelled
+            , MissingAvatar
+            , SpecHadInvalidAnimSet
+            , SpecHadInvalidModel
+            , InvalidUri
+            , AssetNotFound
+            , MismatchedLoadFilters
+            , HttpLoadFailed
+            , CacheLoadFailed
+            , DiskLoadFailed
+            , ParseFailed
+            , Unknown
+            ,
         }
 
-        public enum ovrAvatar2LoadRequestType: Int32
+        public enum ovrAvatar2LoadRequestType : Int32
         {
-            User,
-            Memory,
-            Uri,
+            User
+            , Memory
+            , Uri
+            ,
         }
 
         ///
@@ -120,10 +146,11 @@ namespace Oculus.Avatar2
 
         public enum ovrAvatar2AssetStatus : Int32
         {
-            ovrAvatar2AssetStatus_LoadFailed = 0,
-            ovrAvatar2AssetStatus_Loaded,
-            ovrAvatar2AssetStatus_Unloaded,
-            ovrAvatar2AssetStatus_Updated,
+            ovrAvatar2AssetStatus_LoadFailed = 0
+            , ovrAvatar2AssetStatus_Loaded
+            , ovrAvatar2AssetStatus_Unloaded
+            , ovrAvatar2AssetStatus_Updated
+            ,
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -139,7 +166,7 @@ namespace Oculus.Avatar2
         /// \return result code
         ///
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        private static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_ReleaseResource(ovrAvatar2Id resourceId);
+        private static extern ovrAvatar2Result ovrAvatar2Asset_ReleaseResource(ovrAvatar2Id resourceId);
 
         /// Notify the Avatar runtime that the client application is ready to render the resource
         /// Can be called from any thread
@@ -150,7 +177,7 @@ namespace Oculus.Avatar2
         private static extern ovrAvatar2Result ovrAvatar2Asset_ResourceReadyToRender(ovrAvatar2Id resourceID);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        public static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2Asset_GetName(
+        public static extern unsafe ovrAvatar2Result ovrAvatar2Asset_GetName(
             ovrAvatar2Id id, byte* nameBuffer, UInt32 bufferByteSize);
 
 
@@ -173,11 +200,11 @@ namespace Oculus.Avatar2
         //
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetPrimitiveCount(
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetPrimitiveCount(
             ovrAvatar2Id resourceId, out UInt32 count);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetPrimitiveByIndex(
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetPrimitiveByIndex(
             ovrAvatar2Id resourceId, UInt32 primitiveIndex, out ovrAvatar2Primitive primitive);
 
         //
@@ -185,15 +212,15 @@ namespace Oculus.Avatar2
         //
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetImageCount(
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetImageCount(
             ovrAvatar2Id resourceId, out UInt32 count);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetImageByIndex(
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetImageByIndex(
             ovrAvatar2Id resourceId, UInt32 imageIndex, out ovrAvatar2Image image);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetImageDataByIndex(
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetImageDataByIndex(
             ovrAvatar2Id resourceId, UInt32 imageIndex, /*byte[]*/ IntPtr buffer, UInt32 bufferSize);
 
 
@@ -210,6 +237,7 @@ namespace Oculus.Avatar2
          */
         public enum ovrAvatar2ImageFormat : UInt32
         {
+            ///<summary>Invalid image format</summary>
             Invalid = 0,
             RGBA32 = 0xe3dd9a1e, ///< RGBA 32bit uncompressed texture
             DXT1 = 0xb9ee766e, ///< DXT1/BC1 compressed texture
@@ -232,7 +260,8 @@ namespace Oculus.Avatar2
         public struct ovrAvatar2Image
         {
             public ovrAvatar2Id id; ///< unique id used to reference this image
-            public ovrAvatar2ImageFormat format; // Image format type
+            public ovrAvatar2ImageFormat format; ///< Image format type
+
             public UInt32 sizeX; ///< Image X dimension
             public UInt32 sizeY; ///< Image Y dimension
             public UInt32 mipCount; ///< Number of mipmap levels
@@ -297,6 +326,9 @@ namespace Oculus.Avatar2
         public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetViewFlags(
             ovrAvatar2Id primitiveId, out ovrAvatar2EntityViewFlags viewFlags);
 
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetSubMeshInclusionFlags(
+            ovrAvatar2Id primitiveId, out ovrAvatar2EntitySubMeshInclusionFlags subMeshInclusionFlags);
 
         //-----------------------------------------------------------------
         //
@@ -305,8 +337,18 @@ namespace Oculus.Avatar2
         //
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetIndexData(
-            ovrAvatar2Id primitiveId, /*UInt16*/ IntPtr indexBuffer, UInt32 bytes);
+        private static unsafe extern CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetIndexData(
+            ovrAvatar2Id primitiveId, UInt16* indexBuffer, UInt32 bytes);
+
+        public static bool OvrAvatar2Primitive_GetIndexData(
+            ovrAvatar2Id primitiveId, in NativeArray<UInt16> indexBuffer, UInt32 bytes)
+        {
+            unsafe
+            {
+                return ovrAvatar2Primitive_GetIndexData(primitiveId, indexBuffer.GetPtr(), bytes)
+                    .EnsureSuccess("ovrAvatar2Primitive_GetIndexData", assetLogScope);
+            }
+        }
 
 
         //-----------------------------------------------------------------
@@ -330,55 +372,72 @@ namespace Oculus.Avatar2
         // Get vertex buffer position data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetPositions(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector3f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector3f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer normal data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetNormals(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector3f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector3f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer tangent data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetTangents(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer color data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetColors(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
+
+        // Get vertex buffer ORMT "color" data
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetColorsORMT(
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer texcoord0 data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetTexCoord0(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector2f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector2f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer joint index data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetJointIndices(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4us[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4us[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer joint weight data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetJointWeights(
-            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2VertexBufferId vertexBufferId, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer submesh ID data
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetSubMeshIds(
-            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*Uint32[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*Uint32[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetSubMeshIdsFloat(
-            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*float[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*float[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         // Get vertex buffer submesh types
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetSubMeshTypes(
-            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*Uint32[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*Uint32[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetSubMeshTypesFloat(
-            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*float[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+            ovrAvatar2Id primitiveId, ovrAvatar2VertexBufferId vertexBufferId, /*float[]*/ IntPtr buffer, UInt32 bytes,
+            UInt32 stride);
 
         //-----------------------------------------------------------------
         //
@@ -393,24 +452,28 @@ namespace Oculus.Avatar2
 
         // Get the morph target count of a vertex buffer
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2VertexBuffer_GetMorphTargetCount(
+        public static extern ovrAvatar2Result ovrAvatar2VertexBuffer_GetMorphTargetCount(
             ovrAvatar2MorphTargetBufferId id, out UInt32 morphTargetCount);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2MorphTarget_GetVertexPositions(
-            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, /*ovrAvatar2Vector3f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+        public static extern unsafe ovrAvatar2Result ovrAvatar2MorphTarget_GetVertexPositions(
+            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, ovrAvatar2Vector3f* buffer,
+            UInt32 bytes, UInt32 stride);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2MorphTarget_GetVertexNormals(
-            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, /*ovrAvatar2Vector3f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+        public static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2MorphTarget_GetVertexNormals(
+            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, ovrAvatar2Vector3f* buffer,
+            UInt32 bytes, UInt32 stride);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2MorphTarget_GetVertexTangents(
-            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, /*ovrAvatar2Vector4f[]*/ IntPtr buffer, UInt32 bytes, UInt32 stride);
+        public static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2MorphTarget_GetVertexTangents(
+            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, ovrAvatar2Vector3f* buffer,
+            UInt32 bytes, UInt32 stride);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         internal static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2Asset_GetMorphTargetName(
-            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, byte* nameBuffer, UInt32 bufferByteSize);
+            ovrAvatar2MorphTargetBufferId primitiveId, UInt32 morphTargetIndex, byte* nameBuffer,
+            UInt32 bufferByteSize);
 
 
         //-----------------------------------------------------------------
@@ -425,6 +488,8 @@ namespace Oculus.Avatar2
             Normal = 1, // Linear color space
             Occulusion = 2, // Linear color space
             MetallicRoughness = 3, // Linear color space
+            Emissive = 4, // sRGB color space, linear alpha
+            UsedInExtension = 5, // Handled by material extensions
         }
 
         // For MetallicRoughness, x = metallic factor, y = roughness factor
@@ -436,6 +501,24 @@ namespace Oculus.Avatar2
             public ovrAvatar2Id imageId; // id of the image for the texture
         };
 
+        public enum ovrAvatar2MaterialExtensionEntryType : Int32
+        {
+            ImageId = 0,
+            Float = 1,
+            Int = 2,
+            Vector3f = 3,
+            Vector4f = 4,
+            Invalid = Int32.MaxValue,
+        };
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ovrAvatar2MaterialExtensionEntry
+        {
+            public ovrAvatar2MaterialExtensionEntryType entryType;
+            public UInt32 nameBufferSize; // with null terminator
+            public UInt32 dataBufferSize;
+        };
+
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         public static extern CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetMaterialTextureByIndex(
             ovrAvatar2Id primitiveId, UInt32 materialTextureIndex, out ovrAvatar2MaterialTexture materialTexture);
@@ -444,6 +527,69 @@ namespace Oculus.Avatar2
         public static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2Asset_GetPrimitiveMaterialName(
             ovrAvatar2Id primitiveId, byte* nameBuffer, UInt32 bufferByteSize);
 
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2Asset_DeduceMaterialSubMeshFromName(
+            ovrAvatar2EntitySubMeshInclusionFlags* destType, byte* matName);
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetNumMaterialExtensions(
+            ovrAvatar2Id id,
+            out UInt32 numExtensions);
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern unsafe ovrAvatar2Result ovrAvatar2Primitive_GetMaterialExtensionName(
+            ovrAvatar2Id id,
+            UInt32 extensionIndex,
+            byte* nameBuffer,
+            UInt32* nameBufferSize);
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Primitive_GetNumEntriesInMaterialExtensionByIndex(
+            ovrAvatar2Id id,
+            UInt32 extensionIndex,
+            out UInt32 numEntries);
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrAvatar2Result ovrAvatar2Primitive_MaterialExtensionEntryMetaDataByIndex(
+            ovrAvatar2Id id,
+            UInt32 materialExtensionIndex,
+            UInt32 entryIndex,
+            out ovrAvatar2MaterialExtensionEntry entry);
+
+
+        public static bool OvrAvatar2Primitive_MaterialExtensionEntryMetaDataByIndex(
+            ovrAvatar2Id id,
+            UInt32 materialExtensionIndex,
+            UInt32 entryIndex,
+            out ovrAvatar2MaterialExtensionEntry entry)
+        {
+            return ovrAvatar2Primitive_MaterialExtensionEntryMetaDataByIndex(id, materialExtensionIndex, entryIndex,
+                out entry).EnsureSuccess("ovrAvatar2Primitive_MaterialExtensionEntryMetaDataByIndex", assetLogScope);
+        }
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrAvatar2Result ovrAvatar2Primitive_MaterialExtensionEntryDataByIndex(
+            ovrAvatar2Id id,
+            UInt32 materialExtensionIndex,
+            UInt32 entryIndex,
+            byte* nameBuffer,
+            UInt32 nameBufferSize,
+            byte* dataBuffer,
+            UInt32 dataBufferSize);
+
+        public static unsafe bool OvrAvatar2Primitive_MaterialExtensionEntryDataByIndex(
+            ovrAvatar2Id id,
+            UInt32 materialExtensionIndex,
+            UInt32 entryIndex,
+            byte* nameBuffer,
+            UInt32 nameBufferSize,
+            byte* dataBuffer,
+            UInt32 dataBufferSize)
+        {
+            return ovrAvatar2Primitive_MaterialExtensionEntryDataByIndex(id, materialExtensionIndex, entryIndex,
+                    nameBuffer, nameBufferSize, dataBuffer, dataBufferSize)
+                .EnsureSuccess("ovrAvatar2Primitive_MaterialExtensionEntryDataByIndex", assetLogScope);
+        }
 
         //-----------------------------------------------------------------
         //
@@ -459,8 +605,8 @@ namespace Oculus.Avatar2
         }
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetJointInfo(
-            ovrAvatar2Id primitiveId, /*ovrAvatar2JointInfo[]*/ IntPtr buffer, UInt32 bytes);
+        public static extern unsafe ovrAvatar2Result ovrAvatar2Primitive_GetJointInfo(
+            ovrAvatar2Id primitiveId, ovrAvatar2JointInfo* buffer, UInt32 bytes);
 
 
         //-----------------------------------------------------------------
@@ -480,19 +626,21 @@ namespace Oculus.Avatar2
             public ovrAvatar2Vector2f maxUVValues; // vertex UV max values
             public ovrAvatar2Vector3f minValues; // vertex position min values
             public ovrAvatar2Vector3f maxValues; // vertex position max values
+
+            public ovrAvatar2EntitySubMeshInclusionFlags
+                inclusionFlags; // indicates the type of content in this submesh
         }
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetSubMeshCount(
+        internal static extern ovrAvatar2Result ovrAvatar2Primitive_GetSubMeshCount(
             ovrAvatar2Id primitiveId, out UInt32 subMeshCount);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetSubMeshByIndex(
+        internal static extern ovrAvatar2Result ovrAvatar2Primitive_GetSubMeshByIndex(
             ovrAvatar2Id primitiveId, UInt32 subMeshIndex, out ovrAvatar2PrimitiveSubmesh subMesh);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        internal static extern unsafe CAPI.ovrAvatar2Result ovrAvatar2Primitive_GetSubMeshMaterialName(
+        internal static extern unsafe ovrAvatar2Result ovrAvatar2Primitive_GetSubMeshMaterialName(
             ovrAvatar2Id primitiveId, UInt32 subMeshIndex, byte* nameBuffer, UInt32 bufferByteSize);
-
     }
 }

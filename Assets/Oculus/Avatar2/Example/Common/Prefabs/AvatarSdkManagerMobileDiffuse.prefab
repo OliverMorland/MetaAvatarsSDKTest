@@ -41,9 +41,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 637f19aef5eccc146a6ab77a1d4ab0a8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   DefaultShaderConfigurationInitializer: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
+    type: 2}
+  FastLoadConfigurationInitializer: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
     type: 2}
 --- !u!1001 &7513487270613477842
 PrefabInstance:
@@ -55,66 +57,66 @@ PrefabInstance:
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: HairShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: SkinShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: ArrayShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: DefaultShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: LeftEyeShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: EnnisiveShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: RightEyeShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: SolidColorShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715630990, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: TransparentShaderConfigurationInitializer
-      value: 
+      value:
       objectReference: {fileID: 11400000, guid: faf5a921c93b47843a50c991e149f023,
         type: 2}
     - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: ShaderManager
-      value: 
+      value:
       objectReference: {fileID: 921951328335057785}
     - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: shaderManager
-      value: 
+      value:
       objectReference: {fileID: 921951328335057785}
     - target: {fileID: 4870205409715631025, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}

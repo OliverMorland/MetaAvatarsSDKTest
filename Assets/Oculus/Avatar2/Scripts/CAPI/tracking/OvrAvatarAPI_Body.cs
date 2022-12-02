@@ -91,6 +91,8 @@ namespace Oculus.Avatar2
             public ovrAvatar2Quatf boneRotation32;
             public ovrAvatar2Quatf boneRotation33;
 
+            public float handScaleLeft;
+            public float handScaleRight;
             [MarshalAs(UnmanagedType.U1)] public bool isTrackedLeft;
             [MarshalAs(UnmanagedType.U1)] public bool isTrackedRight;
             [MarshalAs(UnmanagedType.U1)] public bool isConfidentLeft;
@@ -119,13 +121,15 @@ namespace Oculus.Avatar2
         internal delegate bool InputControlCallback(out ovrAvatar2InputControlState inputControlState, IntPtr userContext);
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct ovrAvatar2InputControlContext {
+        internal struct ovrAvatar2InputControlContext
+        {
             public IntPtr context;
             public InputControlCallback inputControlCallback;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct ovrAvatar2InputControlContextNative {
+        internal struct ovrAvatar2InputControlContextNative
+        {
             public IntPtr context;
             public IntPtr inputControlCallback;
         }
@@ -135,13 +139,15 @@ namespace Oculus.Avatar2
         internal delegate bool InputTrackingCallback(out ovrAvatar2InputTrackingState inputTrackingState, IntPtr userContext);
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct ovrAvatar2InputTrackingContext {
+        internal struct ovrAvatar2InputTrackingContext
+        {
             public IntPtr context;
             public InputTrackingCallback inputTrackingCallback;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct ovrAvatar2InputTrackingContextNative {
+        internal struct ovrAvatar2InputTrackingContextNative
+        {
             public IntPtr context;
             public IntPtr inputTrackingCallback;
         }
@@ -173,32 +179,32 @@ namespace Oculus.Avatar2
         internal static extern ovrAvatar2Result ovrAvatar2Body_SetOffset(
             IntPtr bodyTrackingContext,
             ovrAvatar2BodyMarkerTypes type,
-            ref ovrAvatar2Transform inputTransforms);
+            in ovrAvatar2Transform inputTransforms);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         internal static extern ovrAvatar2Result ovrAvatar2Body_SetHandTrackingContext(IntPtr bodyTrackingContext,
-            ref ovrAvatar2HandTrackingDataContext handContext);
+            in ovrAvatar2HandTrackingDataContext handContext);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl,
             EntryPoint = "ovrAvatar2Body_SetHandTrackingContext")]
         internal static extern ovrAvatar2Result ovrAvatar2Body_SetHandTrackingContextNative(
-            IntPtr bodyTrackingContext, ref ovrAvatar2HandTrackingDataContextNative handContext);
+            IntPtr bodyTrackingContext, in ovrAvatar2HandTrackingDataContextNative handContext);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputControlContext(IntPtr bodyTrackingContext, ref ovrAvatar2InputControlContext context);
+        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputControlContext(IntPtr bodyTrackingContext, in ovrAvatar2InputControlContext context);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ovrAvatar2Body_SetInputControlContext")]
-        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputControlContextNative(IntPtr bodyTrackingContext, ref ovrAvatar2InputControlContextNative context);
+        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputControlContextNative(IntPtr bodyTrackingContext, in ovrAvatar2InputControlContextNative context);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputTrackingContext(IntPtr bodyTrackingContext, ref ovrAvatar2InputTrackingContext context);
+        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputTrackingContext(IntPtr bodyTrackingContext, in ovrAvatar2InputTrackingContext context);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ovrAvatar2Body_SetInputTrackingContext")]
-        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputTrackingContextNative(IntPtr bodyTrackingContext, ref ovrAvatar2InputTrackingContextNative context);
+        internal static extern ovrAvatar2Result ovrAvatar2Body_SetInputTrackingContextNative(IntPtr bodyTrackingContext, in ovrAvatar2InputTrackingContextNative context);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
         internal static extern ovrAvatar2Result ovrAvatar2Body_InitializeDataContext(
-            IntPtr bodyTrackingContext, ref ovrAvatar2TrackingDataContext dataContext);
+            IntPtr bodyTrackingContext, out ovrAvatar2TrackingDataContext dataContext);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl,
             EntryPoint = "ovrAvatar2Body_InitializeDataContext")]

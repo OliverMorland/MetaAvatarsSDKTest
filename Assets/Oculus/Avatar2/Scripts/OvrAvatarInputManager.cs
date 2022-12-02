@@ -18,7 +18,8 @@ namespace Oculus.Avatar2
          * The current body tracking implementation.
          * @see OvrAvatarBodyTrackingContext
          */
-        public OvrAvatarBodyTrackingContext BodyTracking {
+        public OvrAvatarBodyTrackingContext BodyTracking
+        {
             private set => _bodyTracking = value;
             get
             {

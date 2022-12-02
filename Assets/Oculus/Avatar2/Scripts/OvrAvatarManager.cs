@@ -1,24 +1,25 @@
-#define DISABLE_OVR_FILE_SYSTEM
+#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS && !OVRPLUGIN_UNSUPPORTED_PLATFORM
+#define USING_XR_SDK
+#endif
 
 using AOT;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Oculus.Skinning.GpuSkinning;
 using UnityEngine;
 using Application = UnityEngine.Application;
-using Oculus.Skinning;
 using Unity.Jobs;
-using UnityEngine.Events;
 using UnityEngine.Profiling;
-using UnityEngine.XR;
+using Debug = UnityEngine.Debug;
+
+
+
 #if UNITY_EDITOR
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Oculus.AvatarSDK2.Editor")]
+[assembly: InternalsVisibleTo("AvatarSDK.PlayModeTests")]
 #endif
 
 /// @file OvrAvatarManager.cs
@@ -48,11 +49,12 @@ namespace Oculus.Avatar2
      *   how many concurrent loads are permissible
      *   and dynamic streaming constraints.
      * - Specify the locations of assets to preload.
-     *   for each platform (Quest, Rift).
+     *   for each platform (Quest, Quest2, Rift).
      * - Select shader and material options.
      * - Choose skinning and tracking behaviours.
      * @see OvrAvatarEntity
      */
+    [DefaultExecutionOrder(-1)]
     public partial class OvrAvatarManager : OvrSingletonBehaviour<OvrAvatarManager>
     {
         public const bool IsAndroidStandalone =
@@ -62,9 +64,8 @@ namespace Oculus.Avatar2
             false;
 #endif
 
-        /* Deprecated debug string indicating the AvatarSDK Unity Integration version (C# code) */
-        [System.Obsolete("See SDKVersionInfo.cs", true)]
-        public const string AvatarIntegrationVersion = "undefined";
+        public CAPI.ovrAvatar2Platform Platform { get; private set; } = CAPI.ovrAvatar2Platform.Invalid;
+        public CAPI.ovrAvatar2ControllerType ControllerType { get; private set; } = CAPI.ovrAvatar2ControllerType.Invalid;
 
         /**
          * Return codes for @ref UserHasAvatarAsync query.
@@ -75,6 +76,7 @@ namespace Oculus.Avatar2
             BadParameter = 1,
             SendFailed = 2,
             RequestFailed = 3,
+            RequestCancelled = 4,
 
             HasNoAvatar = 8,
             HasAvatar = 9,
@@ -89,10 +91,49 @@ namespace Oculus.Avatar2
             BadParameter = 1,
             SendFailed = 2,
             RequestFailed = 3,
+            RequestCancelled = 4,
 
             AvatarHasNotChanged = 8,
             AvatarHasChanged = 9,
         }
+
+        /**
+         * Encapsulates a mesh from an avatar primitive.
+         * @see OnAvatarMeshLoaded
+         */
+        public struct MeshData
+        {
+            public MeshData(
+                string name,
+                int[] indices,
+                Vector3[] positions,
+                Vector3[] normals,
+                Color32[] colors,
+                Vector2[] texcoords,
+                Vector4[] tangents,
+                BoneWeight[] boneweights,
+                Matrix4x4[] bindposes)
+            {
+                Name = name;
+                Indices = indices;
+                Positions = positions;
+                Normals = normals;
+                Colors = colors;
+                TexCoords = texcoords;
+                Tangents = tangents;
+                BindPoses = bindposes;
+                BoneWeights = boneweights;
+            }
+            public readonly string Name;
+            public readonly int[] Indices;
+            public readonly Vector3[] Positions;
+            public readonly Vector3[] Normals;
+            public readonly Color32[] Colors;
+            public readonly Vector2[] TexCoords;
+            public readonly Vector4[] Tangents;
+            public readonly BoneWeight[] BoneWeights;
+            public readonly Matrix4x4[] BindPoses;
+        };
 
         private const string logScope = "manager";
         public static bool initialized { get; private set; }
@@ -131,11 +172,6 @@ Roughly equal to number of cores used")]
             set => OvrTime.minWorkPerFrameMS = value;
         }
 
-        /**
-         * Maximum timeout (in milliseconds) on avatar asset loading.
-         */
-        public UInt32 CurrentMaxAssetTimeoutMs => CAPI.CurrentMaxAssetTimeoutMs;
-
         private readonly Dictionary<OvrAvatarEntity, Action> _loadActions = new Dictionary<OvrAvatarEntity, Action>();
         private readonly Queue<OvrAvatarEntity> _loadQueue = new Queue<OvrAvatarEntity>();
 
@@ -159,11 +195,13 @@ Roughly equal to number of cores used")]
         [SerializeField]
         private Int64 _maxReceiveBytesPerSecond = -1;
 
-        [Tooltip("Number of milliseconds to wait for avatar specification request to complete before failing, 0 for no limit, -1 to use default")]
+        [Tooltip("Number of milliseconds to wait for avatar specification request to complete before failing, 0 for no limit, -1 to use default" +
+                 "\n avatar specification request are small, and aren't expected to take more than a second typically.")]
         [SerializeField]
         private Int32 _specificationTimeoutMs = -1;
 
-        [Tooltip("Number of milliseconds to wait for asset request to complete before failing, 0 for no limit, -1 to use default")]
+        [Tooltip("Number of milliseconds to wait for asset request to complete before failing, 0 for no limit, -1 to use default" +
+                 "\n asset request can take many seconds, normally set to no limit and rely on low bandwidth timeout")]
         [SerializeField]
         private Int32 _assetTimeoutMs = -1;
 
@@ -179,22 +217,81 @@ Roughly equal to number of cores used")]
         * A list of zip files to be loaded upon initializing.
         * Filepaths must be relative to the *StreamingAssets* folder, postfix and file extension will be auto applied.
         */
-        [Header("Asset Preloading")]
+        [Header("Preset Zip Assets")]
         [Tooltip("A list of zip files to be loaded upon initializing." +
-                 "\n Filepaths must be relative to the StreamingAssets folder, postfix will be auto applied.")]
+                 "\n Filepaths must be relative to the StreamingAssets folder. zipPostfix will be automatically applied.")]
 
-        [SerializeField] private List<string> _preloadZipFiles = new List<string>();
-
-#pragma warning disable CS0414
-        [SerializeField] private string zipPostfixDefault = "_Rift";
-        [SerializeField] private string zipPostfixAndroid = "_Quest";
-#pragma warning restore CS0414
+        [SerializeField]
+        private List<string> _preloadZipFiles = new List<string>();
 
         [Tooltip("A list of platform independent zip files to be loaded upon initializing." +
                  "\n Filepaths must be relative to the StreamingAssets folder, postfix will not be applied.")]
-        [SerializeField] private List<string> _preloadUniversalZipFiles = new List<string>();
+        [SerializeField]
+        private List<string> _preloadUniversalZipFiles = new List<string>();
 
-        [SerializeField] private string ovrAvatar2AssetFolder = "Oculus";
+        [Tooltip("Platform postfix for avatar .zip files inside Streaming Assets, and for the .glb files themselves inside the zip (in lowercase).  E.g. 'PresetAvatars_Rift.zip', '0_rift.glb'.")]
+        [SerializeField]
+        private string zipPostfixDefault = "Rift";
+
+        [Tooltip("Platform postfix for avatar .zip files inside Streaming Assets, and for the .glb files themselves inside the zip (in lowercase).  E.g. 'PresetAvatars_Quest.zip', '0_quest.glb'.")]
+        [SerializeField]
+        private string zipPostfixAndroid = "Quest";
+
+        [Tooltip("Platform postfix for avatar .zip files inside Streaming Assets, and for the .glb files themselves inside the zip (in lowercase).  E.g. 'PresetAvatars_Quest.zip', '0_quest.glb'." +
+                 "\n\nNote, Quest and Quest 2 currently share the same set of presets to reduce APK size.")]
+        [SerializeField]
+        private string zipPostfixQuest2 = "Quest";
+
+        [Tooltip("FastLoad postfix for avatar .zip files inside Streaming Assets, and for the .glb files themselves inside the zip (in lowercase).  E.g. 'PresetAvatars_Fastload.zip', '0_fastload.glb'.")]
+        [SerializeField]
+        private string zipPostfixFastLoad = "Fastload";
+
+        [Tooltip("Extension of avatar glb files inside preset .zip files")]
+        [SerializeField]
+        private string zipFileExtension = ".glb";
+
+
+        [Header("Streaming Assets")]
+        [Tooltip("Platform postfix used when loading glb files directly out of Streaming Assets (not in a .zip)" +
+                 "\n\nThe full filename will be: (path)_(platform)(quality)(version)(extension), e.g. customavatar_riftv04.glb.zst")]
+        [SerializeField]
+        private string streamingAssetPostfixDefault = "rift";
+
+        [Tooltip("Platform postfix used when loading glb files directly out of Streaming Assets (not in a .zip)" +
+                 "\n\nThe full filename will be: (path)_(platform)(quality)(version)(extension), e.g. customavatar_quest1v04.glb.zst")]
+        [SerializeField]
+        private string streamingAssetPostfixAndroid = "quest1";
+
+        [Tooltip("Platform postfix used when loading glb files directly out of Streaming Assets (not in a .zip)" +
+                 "\n\nThe full filename will be: (path)_(platform)(quality)(version)(extension), e.g. customavatar_quest2v04.glb.zst")]
+        [SerializeField]
+        private string streamingAssetPostfixQuest2 = "quest2";
+
+        [Tooltip("Fast Load postfix used when loading glb files directly out of Streaming Assets (not in a .zip)" +
+                 "\n\nThe full filename will be: (path)_(platform)(quality)(version)(extension), e.g. customavatar_fastloadv04.glb.zst")]
+        [SerializeField]
+        private string streamingAssetPostfixFastLoad = "fastload";
+
+        [Tooltip("Version suffix (padded to 2 digits) when loading glb files directly out of Streaming Assets (not in a .zip)")]
+        [SerializeField]
+        private int assetVersionDefault = 4;
+
+        [Tooltip("Version suffix (padded to 2 digits) when loading glb files directly out of Streaming Assets (not in a .zip)")]
+        [SerializeField]
+        private int assetVersionAndroid = 4;
+
+        [Tooltip("Version suffix (padded to 2 digits) when loading glb files directly out of Streaming Assets (not in a .zip)")]
+        [SerializeField]
+        private int assetVersionQuest2 = 4;
+
+        [Tooltip("File extension used when loading glb files directly out of Streaming Assets (not in a .zip)")]
+        [SerializeField]
+        private string streamingAssetFileExtension = ".glb.zst";
+
+        [Header("Required Assets")]
+        [Tooltip("Where to find OvrAvatar2Assets.zip inside StreamingAssets")]
+        [SerializeField]
+        private string ovrAvatar2AssetFolder = "Oculus";
 
         [Header("Customization")]
 
@@ -204,25 +301,43 @@ Roughly equal to number of cores used")]
 
         [Header("Shaders")]
         /// Shader manager to use for all avatars.
-        [SerializeField] public OvrAvatarShaderManagerBase ShaderManager;
+        [SerializeField]
+        public OvrAvatarShaderManagerBase ShaderManager;
 
         [Header("Experimental")]
         [Tooltip("Update critical joints using Unity Transform jobs, may help reduce main thread CPU usage")]
-        [SerializeField] private bool _useCriticalJointJobs = false;
+        [SerializeField]
+        private bool _useCriticalJointJobs = false;
+        [Tooltip("Connect the avatar runtime to the Avatar Monitor pane in Unity to show avatar SDK data")]
+        [SerializeField]
+        private bool _enableDevTools = false;
+
+        [Tooltip(@"Initially load a lower quality, but significantly faster to load version of the avatar. This will be used until the full quality avatar is loaded.")]
+        [SerializeField]
+        public bool UseFastLoadAvatar = false;
 
         [Header("Debug")]
-        [SerializeField] private CAPI.ovrAvatar2LogLevel _ovrLogLevel = CAPI.ovrAvatar2LogLevel.Verbose;
+        [SerializeField]
+        private CAPI.ovrAvatar2LogLevel _ovrLogLevel = CAPI.ovrAvatar2LogLevel.Verbose;
 
         private readonly List<OvrAvatarEntity> _entityUpdateOrder = new List<OvrAvatarEntity>(16);
         private OvrAvatarEntity[] _entityUpdateArray = Array.Empty<OvrAvatarEntity>();
         private bool _entityUpdateArrayChanged = false;
 
-        private readonly Dictionary<string, CAPI.ovrAvatar2Id> _pathToAssetMap = new Dictionary<string, CAPI.ovrAvatar2Id>();
         private readonly Dictionary<CAPI.ovrAvatar2Id, OvrAvatarAssetBase> _assetMap = new Dictionary<CAPI.ovrAvatar2Id, OvrAvatarAssetBase>();
         private readonly Dictionary<CAPI.ovrAvatar2Id, OvrAvatarResourceLoader> _resourcesByID = new Dictionary<CAPI.ovrAvatar2Id, OvrAvatarResourceLoader>();
 
         /// Desired level for console logging.
         public CAPI.ovrAvatar2LogLevel ovrLogLevel => _ovrLogLevel;
+
+        public void SetLogLevel(CAPI.ovrAvatar2LogLevel logLevel)
+        {
+            if (_ovrLogLevel != logLevel)
+            {
+                _ovrLogLevel = logLevel;
+                OvrAvatarLog.logLevel = OvrAvatarLog.GetLogLevel(logLevel);
+            }
+        }
 
         /// Maximum number of concurrent network requests.
         /// The value -1 indicates no limit.
@@ -236,6 +351,9 @@ Roughly equal to number of cores used")]
 
         ///  Whether critical joints update using Unity Transform jobs, which may help reduce main thread CPU usage
         public bool UseCriticalJointJobs => _useCriticalJointJobs;
+
+        // Whether to activate the arbiter client sending data
+        public bool EnableDevTools => _enableDevTools;
 
         ///
         public IOvrAvatarHandTrackingDelegate DefaultHandTrackingDelegate { get; private set; }
@@ -253,6 +371,12 @@ Roughly equal to number of cores used")]
         public OvrAvatarGazeTargetManager GazeTargetManager { get; private set; }
 
 
+        /// Selects the face tracker to use for all avatars.
+        internal OvrAvatarFacePoseProviderBase OvrPluginFacePoseProvider { get; private set; }
+
+        /// Selects the eye tracker to use for all avatars.
+        internal OvrAvatarEyePoseProviderBase OvrPluginEyePoseProvider { get; private set; }
+
         private delegate void RequestDelegate(CAPI.ovrAvatar2Result result, IntPtr userContext);
 
         private readonly Dictionary<CAPI.ovrAvatar2RequestId, RequestDelegate> _activeRequests =
@@ -268,6 +392,8 @@ Roughly equal to number of cores used")]
             // - "UnityException: GetGraphicsShaderLevel is not allowed to be called from a MonoBehaviour constructor
             // (or instance field initializer), call it in Awake or Start instead. Called from MonoBehaviour 'OvrAvatarManager'."
             _shaderLevelSupport = SystemInfo.graphicsShaderLevel;
+
+            ValidateSupportedSkinners();
 
             if (!OvrTime.HasLimitedBudget)
             {
@@ -287,10 +413,11 @@ Roughly equal to number of cores used")]
             var clientName = $"{Application.companyName}.{Application.productName}";
             var clientAppVersionString = $"{Application.version}+{Application.unityVersion}";
 
-            OvrAvatarLog.LogInfo($"OvrAvatarManager initializing for app {clientName}::{clientAppVersionString}"
+            var platform = GetPlatform();
+            OvrAvatarLog.LogInfo($"OvrAvatarManager initializing for app {clientName}::{clientAppVersionString} on platform '{platform}'"
                 , logScope, this);
 
-            var initInfo = CAPI.OvrAvatar_DefaultInitInfo(clientAppVersionString, GetPlatform());
+            var initInfo = CAPI.OvrAvatar_DefaultInitInfo(clientAppVersionString, platform);
             {
                 initInfo.flags |= CAPI.ovrAvatar2InitializeFlags.EnableSkinningOrigin;
                 initInfo.loggingLevel = _ovrLogLevel;
@@ -312,22 +439,42 @@ Roughly equal to number of cores used")]
                 initInfo.defaultModelColor.y = _defaultModelColor.g;
                 initInfo.defaultModelColor.z = _defaultModelColor.b;
                 initInfo.clientName = clientName;
+                // Transform from SDK space (-Z forward) to Unity space (+Z forward)
+#if OVR_AVATAR_ENABLE_CLIENT_XFORM
+                initInfo.clientSpaceRightAxis = UnityEngine.Vector3.right;
+                initInfo.clientSpaceUpAxis = UnityEngine.Vector3.up;
+                initInfo.clientSpaceForwardAxis = UnityEngine.Vector3.forward;
+#else
+                initInfo.clientSpaceRightAxis = UnityEngine.Vector3.right;
+                initInfo.clientSpaceUpAxis = UnityEngine.Vector3.up;
+                initInfo.clientSpaceForwardAxis = -UnityEngine.Vector3.forward;
+#endif
             }
 
-            OvrAvatarLog.LogInfo($"Attempting to load ovrbody lib", logScope, this);
-            var ovrBodyLoadResult = OvrBody.LoadLibrary();
-            if (ovrBodyLoadResult == OvrBody.OvrBodyLoadLibraryResult.Success)
-            {
-                OvrAvatarLog.LogInfo("Loaded libovrbody", logScope, this);
-            }
-            else
-            {
-                OvrAvatarLog.LogError($"Unable to load libovrbody - ({ovrBodyLoadResult})", logScope, this);
-            }
-
+#if USING_XR_SDK
             OvrAvatarLog.LogInfo($"Attempting to initialize ovrplugintracking lib", logScope, this);
             if (OvrPluginTracking.Initialize(initInfo.loggingCallback, initInfo.loggingContext))
             {
+
+                OvrPluginFacePoseProvider = OvrPluginTracking.CreateFaceTrackingContext();
+                if (OvrPluginFacePoseProvider != null)
+                {
+                    OvrAvatarLog.LogInfo("Created ovrplugintracking face tracking context", logScope, this);
+                }
+                else
+                {
+                    OvrAvatarLog.LogInfo("Failed to created ovrplugintracking face tracking context", logScope, this);
+                }
+
+                OvrPluginEyePoseProvider = OvrPluginTracking.CreateEyeTrackingContext();
+                if (OvrPluginEyePoseProvider != null)
+                {
+                    OvrAvatarLog.LogInfo("Created ovrplugintracking eye tracking context", logScope, this);
+                }
+                else
+                {
+                    OvrAvatarLog.LogInfo("Failed to created ovrplugintracking eye tracking context", logScope, this);
+                }
 
                 DefaultHandTrackingDelegate = OvrPluginTracking.CreateHandTrackingDelegate();
                 OvrAvatarLog.LogInfo(DefaultHandTrackingDelegate != null
@@ -338,14 +485,16 @@ Roughly equal to number of cores used")]
             {
                 OvrAvatarLog.LogInfo("Failed to initialize  ovrplugintracking lib", logScope, this);
             }
+#endif
 
             // This is actually used even w/out GPUSkinning as part of skinning mode selection
             // NOTE: That is rather ugly, make that not the case or atleast rename
             GpuSkinningConfiguration.Instantiate();
+            GpuSkinningConfiguration.Instance.ValidateFallbackSkinner(UnitySkinnerSupported, OvrGPUSkinnerSupported);
 
             // initialize the GPU Skinning dll
             bool gpuSkinningInitSuccess = false;
-            if (OvrGPUSkinnerSupported)
+            if (OvrGPUSkinnerSupported || OvrComputeSkinnerSupported)
             {
                 try
                 {
@@ -385,6 +534,18 @@ Roughly equal to number of cores used")]
             {
                 OvrAvatarLog.LogError("ovrAvatar2_Initialize Failed", logScope, this);
                 return;
+            }
+            Platform = platform;
+            ControllerType = GetControllerType();
+
+            // Enable the tools link so we send data to the Avatar Resource Monitor window
+            // TODO: fix root cause of this check causing a crash
+            //if (OvrAvatarManager.Instance.EnableDevTools)
+            {
+                if (CAPI.ovrAvatar2_EnableDevToolsLink() != CAPI.ovrAvatar2Result.Success)
+                {
+                    OvrAvatarLog.LogWarning("Failed to enable dev tools link", logScope, this);
+                }
             }
 
             OvrAvatarLog.LogVerbose($"libovravatar2 initialized with version: {CAPI.OvrAvatar_GetVersionString()}", logScope, this);
@@ -427,7 +588,18 @@ Roughly equal to number of cores used")]
             }
         }
 
-        protected void Update()
+        protected virtual void Update()
+        {
+            UpdateInternal(Time.deltaTime);
+        }
+
+        // Used when updating avatarSDK from a mechanism other than UnityEvent.Update
+        public void Step(float deltaSeconds)
+        {
+            UpdateInternal(deltaSeconds);
+        }
+
+        private void UpdateInternal(float deltaSeconds)
         {
             if (!initialized) { return; }
             if (ShaderManager == null)
@@ -472,10 +644,9 @@ Roughly equal to number of cores used")]
             }
             Profiler.EndSample();
 
-            Profiler.BeginSample("CAPI.OvrAvatar.Update");
-            float deltaSeconds = Time.deltaTime;
+            Profiler.BeginSample("CAPI.OvrAvatar_Update");
             CAPI.OvrAvatar_Update(deltaSeconds);
-            Profiler.EndSample();
+            Profiler.EndSample(); // "CAPI.OvrAvatar_Update"
 
             Profiler.BeginSample("OvrAvatarManager.PostSDKUpdates");
             foreach (var trackedEntity in _entityUpdateArray)
@@ -503,10 +674,12 @@ Roughly equal to number of cores used")]
             Profiler.EndSample();
 
             Profiler.BeginSample("OvrAvatarManager.UpdateInternals");
+            GpuSkinningController?.StartFrame();
             foreach (var trackedEntity in _entityUpdateArray)
             {
                 trackedEntity.UpdateInternal(deltaSeconds);
             }
+            GpuSkinningController?.EndFrame();
             Profiler.EndSample();
 
             if (UseCriticalJointJobs)
@@ -516,6 +689,7 @@ Roughly equal to number of cores used")]
             }
 
             GpuSkinningController?.UpdateInternal();
+            Permission_Update();
         }
 
         protected override void Shutdown()
@@ -536,6 +710,11 @@ Roughly equal to number of cores used")]
                 asset.Dispose();
             }
 
+            if (GpuSkinningController != null)
+            {
+                GpuSkinningController.Dispose();
+            }
+
             foreach (var resource in _resourcesByID)
             {
                 resource.Value.Dispose();
@@ -553,7 +732,7 @@ Roughly equal to number of cores used")]
 
             OvrPluginTracking.Shutdown();
 
-            if (OvrGPUSkinnerSupported)
+            if (OvrGPUSkinnerSupported || OvrComputeSkinnerSupported)
             {
                 var gpuSkinningShutdownResult = CAPI.OvrGpuSkinning_Shutdown();
                 if (!gpuSkinningShutdownResult)
@@ -563,7 +742,6 @@ Roughly equal to number of cores used")]
             }
 
             _entityUpdateArray = Array.Empty<OvrAvatarEntity>();
-            _pathToAssetMap.Clear();
             _assetMap.Clear();
 
             _ShutdownSingleton<GpuSkinningConfiguration>(GpuSkinningConfiguration.Instance);
@@ -617,13 +795,15 @@ Roughly equal to number of cores used")]
         public void AddZipSource(string file)
         {
             string filePath = GetAssetPathForFile(file);
-            string postfix = IsAndroidStandalone ? zipPostfixAndroid : zipPostfixDefault;
+            string postfix = GetPlatformPostfix(true);
+            string fastPath = GetAssetPathForFile(file);
+            string fastPostfix = GetFastLoadPostfix(true);
 
             if (postfix.Length > 0)
             {
                 // Remove extension so we can insert postfix
                 filePath = Path.ChangeExtension(filePath, null);
-                filePath += $"{postfix}.zip";
+                filePath += $"_{postfix}.zip";
             }
             else
             {
@@ -631,6 +811,10 @@ Roughly equal to number of cores used")]
                 filePath = Path.ChangeExtension(filePath, "zip");
             }
             AddRawZipSource(filePath);
+
+            fastPath = Path.ChangeExtension(fastPath, null);
+            fastPath += $"_{fastPostfix}.zip";
+            AddRawZipSource(fastPath);
         }
 
         /**
@@ -673,6 +857,12 @@ Roughly equal to number of cores used")]
             if (userId == 0)
             {
                 OvrAvatarLog.LogError("UserHasAvatarAsync failed: userId must not be 0", logScope, this);
+                return HasAvatarRequestResultCode.BadParameter;
+            }
+
+            if (!OvrAvatarEntitlement.AccessTokenIsValid)
+            {
+                OvrAvatarLog.LogError("UserHasAvatarAsync failed: no valid access token", logScope, this);
                 return HasAvatarRequestResultCode.BadParameter;
             }
 
@@ -737,6 +927,7 @@ Roughly equal to number of cores used")]
                 return HasAvatarChangedRequestResultCode.RequestFailed;
             }
 
+            // ReSharper disable once InvertIf
             if (!requestResult.resultBool.HasValue)
             {
                 OvrAvatarLog.LogError($"ovrAvatar2_HasAvatarChanged encountered an unexpected error", logScope, this);
@@ -805,10 +996,10 @@ Roughly equal to number of cores used")]
          */
         public (UInt64 downloadTotalBytes, UInt64 downloadSpeed, UInt64 totalRequests, UInt64 activeRequests) QueryNetworkStats()
         {
-            UInt32 statsSize =
-                CAPI.ovrAvatar2_QueryNetworkStats(out var stats, (UInt32)Marshal.SizeOf<CAPI.ovrAvatar2NetworkStats>());
+            bool statsSuccess =
+                CAPI.OvrAvatar2_QueryNetworkStats(out var stats);
 
-            if (statsSize != 0)
+            if (statsSuccess)
             {
                 return (stats.downloadTotalBytes, stats.downloadSpeed, stats.totalRequests, stats.activeRequests);
             }
@@ -819,14 +1010,108 @@ Roughly equal to number of cores used")]
             }
         }
 
+        public string GetPlatformGLBPostfix(bool isFromZip)
+        {
+            return GetPlatformPostfix(isFromZip).ToLower();
+        }
+
+        public string GetFastLoadGLBPostfix(bool isFromZip)
+        {
+            return isFromZip ? zipPostfixFastLoad : streamingAssetPostfixFastLoad;
+        }
+
+        public string GetPlatformGLBVersion(bool highQuality, bool isFromZip)
+        {
+            if (isFromZip)
+            {
+                return String.Empty;
+            }
+            int assetVersion = 0;
+            switch (Platform)
+            {
+                case CAPI.ovrAvatar2Platform.PC:
+                    assetVersion = assetVersionDefault;
+                    break;
+                case CAPI.ovrAvatar2Platform.Quest:
+                    assetVersion = assetVersionAndroid;
+                    break;
+                case CAPI.ovrAvatar2Platform.Quest2:
+                    assetVersion = assetVersionQuest2;
+                    break;
+                case CAPI.ovrAvatar2Platform.QuestPro:
+                    assetVersion = assetVersionQuest2;
+                    break;
+                default:
+                    OvrAvatarLog.LogError($"Error unknown platform for version number, using default. Platform was {Platform}.", logScope, this);
+                    assetVersion = assetVersionDefault;
+                    break;
+            }
+
+            return "_" + (highQuality ? "h" : "v") + assetVersion.ToString("00");
+        }
+
+        public string GetPlatformGLBExtension(bool isFromZip)
+        {
+            return isFromZip ? zipFileExtension : streamingAssetFileExtension;
+        }
+
+        private static CAPI.ovrAvatar2Platform GetPlatform()
+        {
+            return IsAndroidStandalone ? GetAndroidStandalonePlatform() : CAPI.ovrAvatar2Platform.PC;
+        }
+
+        private CAPI.ovrAvatar2ControllerType GetControllerType()
+        {
+            OvrAvatarLog.Assert(
+                CAPI.ovrAvatar2Platform.First <= Platform && Platform <= CAPI.ovrAvatar2Platform.Last
+                , logScope, this);
+
+            switch (Platform)
+            {
+                case CAPI.ovrAvatar2Platform.PC:
+                    return CAPI.ovrAvatar2ControllerType.Rift;
+                case CAPI.ovrAvatar2Platform.Quest:
+                    return CAPI.ovrAvatar2ControllerType.Touch;
+                case CAPI.ovrAvatar2Platform.Quest2:
+                    return CAPI.ovrAvatar2ControllerType.Quest2;
+                case CAPI.ovrAvatar2Platform.QuestPro:
+                    return CAPI.ovrAvatar2ControllerType.QuestPro;
+
+
+                case CAPI.ovrAvatar2Platform.Num:
+                case CAPI.ovrAvatar2Platform.Invalid:
+                default:
+                    OvrAvatarLog.LogError($"Unable to find controller type for current platform {Platform}", logScope, this);
+                    break;
+            }
+            return CAPI.ovrAvatar2ControllerType.Invalid;
+        }
+
         #endregion
 
         #region Private Functions
 
-        private CAPI.ovrAvatar2Platform GetPlatform()
+        private string GetPlatformPostfix(bool isFromZip)
         {
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-            return IsAndroidStandalone ? GetAndroidStandalonePlatform() : CAPI.ovrAvatar2Platform.PC;
+            switch (Platform)
+            {
+                case CAPI.ovrAvatar2Platform.PC:
+                    return isFromZip ? zipPostfixDefault : streamingAssetPostfixDefault;
+                case CAPI.ovrAvatar2Platform.Quest:
+                    return isFromZip ? zipPostfixAndroid : streamingAssetPostfixAndroid;
+                case CAPI.ovrAvatar2Platform.Quest2:
+                    return isFromZip ? zipPostfixQuest2 : streamingAssetPostfixQuest2;
+                case CAPI.ovrAvatar2Platform.QuestPro:
+                    return isFromZip ? zipPostfixQuest2 : streamingAssetPostfixQuest2;
+                default:
+                    OvrAvatarLog.LogError($"Error unknown platform for prefix, using default. Platform was {Platform}.", logScope, this);
+                    return IsAndroidStandalone ? (isFromZip ? zipPostfixAndroid : streamingAssetPostfixAndroid) : (isFromZip ? zipPostfixDefault : streamingAssetPostfixDefault);
+            }
+        }
+
+        private string GetFastLoadPostfix(bool isFromZip)
+        {
+            return isFromZip ? zipPostfixFastLoad : streamingAssetPostfixFastLoad;
         }
 
         private string GetAssetPathForFile(string file)
@@ -835,26 +1120,92 @@ Roughly equal to number of cores used")]
             return IsAndroidStandalone ? file : Path.Combine(Application.streamingAssetsPath, file);
         }
 
-        private CAPI.ovrAvatar2Platform GetAndroidStandalonePlatform()
+        private static CAPI.ovrAvatar2Platform GetAndroidStandalonePlatform()
+            => GetAndroidStandalonePlatform(SystemInfo.deviceName);
+
+
+        internal const string NonQuestDeviceLogText = "Identified non-Quest platform";
+        internal const string RecognizedQuestDeviceLogText =
+            "Identified Quest platform!";
+        internal const string UnrecognizedQuestDeviceWarningText =
+            "Unrecognized Quest platform, treating as QuestPro. AvatarSDK is likely out of date!";
+        internal static CAPI.ovrAvatar2Platform GetAndroidStandalonePlatform(string deviceName)
         {
-            var deviceName = SystemInfo.deviceName;
+            deviceName = deviceName.Trim();
+
             var isQuestDevice = deviceName.IndexOf("Quest", StringComparison.OrdinalIgnoreCase) >= 0;
-            if (isQuestDevice)
+            if (!isQuestDevice)
             {
-                // Check explicitly for Quest1
-                var isQuest1 = deviceName.Equals("Oculus Quest", StringComparison.OrdinalIgnoreCase);
-                // Default to Quest2 settings for any Quest device which isn't Quest1
-                return isQuest1 ? CAPI.ovrAvatar2Platform.Quest : CAPI.ovrAvatar2Platform.Quest2;
+                OvrAvatarLog.LogInfo(NonQuestDeviceLogText);
+                // Default to Quest1 settings for unrecognized Android headsets
+                OvrAvatarLog.LogVerbose("Reporting as Quest device", logScope);
+                return CAPI.ovrAvatar2Platform.Quest;
             }
 
-            // Default to Quest1 settings for unrecognized Android headsets
-            // TODO: Need to detect non-Quest Android devices, requires new enum values
-            return CAPI.ovrAvatar2Platform.Quest;
+            var foundType = CAPI.ovrAvatar2Platform.Invalid;
+
+            // Check explicitly for Quest1
+            bool isQuest1 = deviceName.EndsWith("Quest", StringComparison.OrdinalIgnoreCase);
+            if (isQuest1) { foundType = CAPI.ovrAvatar2Platform.Quest; }
+
+
+            if (foundType == CAPI.ovrAvatar2Platform.Invalid)
+            {
+                bool isQuest2 = deviceName.EndsWith("2")
+                                && (deviceName.EndsWith("Quest 2", StringComparison.OrdinalIgnoreCase)
+                                    || deviceName.EndsWith("Quest2", StringComparison.OrdinalIgnoreCase));
+                if (isQuest2) { foundType =  CAPI.ovrAvatar2Platform.Quest2; }
+            }
+
+            if (foundType == CAPI.ovrAvatar2Platform.Invalid)
+            {
+                bool isQuestPro = deviceName.EndsWith("Pro")
+                                  && (deviceName.EndsWith("Quest Pro", StringComparison.OrdinalIgnoreCase)
+                                      || deviceName.EndsWith("QuestPro", StringComparison.OrdinalIgnoreCase));
+                if (isQuestPro) { foundType =  CAPI.ovrAvatar2Platform.QuestPro; }
+            }
+
+            if (foundType == CAPI.ovrAvatar2Platform.Invalid)
+            {
+                // Default to QuestPro settings for any Quest device which isn't Quest1 or Quest2
+                OvrAvatarLog.LogWarning(UnrecognizedQuestDeviceWarningText, logScope);
+                return CAPI.ovrAvatar2Platform.QuestPro;
+            }
+
+            OvrAvatarLog.LogInfo(RecognizedQuestDeviceLogText, logScope);
+            OvrAvatarLog.LogVerbose($"Identified Quest platform {foundType}", logScope);
+            return foundType;
         }
 
         #endregion
 
         #region SDK Callbacks
+
+        /**
+         * Event that provides the original untransformed avatar mesh data before skinning deformations are applied.
+         * Since each mesh is only loaded once, this function will be called for every level of detail
+         * of an avatar even if that avatar is loaded more than once.
+         * If OnAvatarMeshLoaded has no listeners, the Unity mesh vertices are loaded into the GPU and discarded.
+         * Otherwise, the mesh is provided as an argument to the listener function.
+         * The application is responsible for memory management of this mesh data and removing added listener delegates.
+         * @param mgr   OvrAvatarManager instance which invoked the event
+         * @param prim  OvrAvatarPrimitive describing the avatar SDK mesh
+         * @param mesh  MeshData structure containing the data for the mesh.
+         *              Not all of these fields will be present. If GPU skinning is used,
+         *              the BindPoses field will be null - this data is only present
+         *              for Unity skinning. Depending on avatar configuration,
+         *              Tangents and Colors might also be omitted.
+         */
+        public delegate void AvatarMeshLoadHandler(OvrAvatarManager mgr, OvrAvatarPrimitive prim, MeshData mesh);
+        public event AvatarMeshLoadHandler OnAvatarMeshLoaded;
+
+        internal bool HasMeshLoadListener => OnAvatarMeshLoaded != null;
+
+        internal void InvokeMeshLoadEvent(OvrAvatarPrimitive prim, MeshData destMesh)
+        {
+            Debug.Assert(HasMeshLoadListener);
+            OnAvatarMeshLoaded?.Invoke(this, prim, destMesh);
+        }
 
         [MonoPInvokeCallback(typeof(CAPI.ResourceDelegate))]
         public static void ResourceCallback(in CAPI.ovrAvatar2Asset_Resource resource, IntPtr context)
@@ -922,35 +1273,12 @@ Roughly equal to number of cores used")]
 
         #region Asset Loading
 
-        public static CAPI.ovrAvatar2Id GetIdIfPathIsLoaded(string path)
-        {
-            if (Instance._pathToAssetMap.TryGetValue(path, out CAPI.ovrAvatar2Id assetId))
-            {
-                return assetId;
-            }
-
-            return CAPI.ovrAvatar2Id.Invalid;
-        }
-
-        public static void AddLoadedPath(string path, CAPI.ovrAvatar2Id assetId)
-        {
-            if (!Instance._pathToAssetMap.ContainsKey(path))
-            {
-                Instance._pathToAssetMap.Add(path, assetId);
-            }
-        }
-
-        public static void RemoveLoadedPath(string path, CAPI.ovrAvatar2Id assetId)
-        {
-            Instance._pathToAssetMap.Remove(path);
-        }
-
-        public static bool IsOvrAvatarAssetLoaded(CAPI.ovrAvatar2Id assetId)
+        internal static bool IsOvrAvatarAssetLoaded(CAPI.ovrAvatar2Id assetId)
         {
             return OvrAvatarManager.Instance._assetMap.ContainsKey(assetId);
         }
 
-        public static bool GetOvrAvatarAsset<T>(CAPI.ovrAvatar2Id assetId, out T asset) where T : OvrAvatarAssetBase
+        internal static bool GetOvrAvatarAsset<T>(CAPI.ovrAvatar2Id assetId, out T asset) where T : OvrAvatarAssetBase
         {
             if (Instance._assetMap.TryGetValue(assetId, out var foundAsset))
             {
@@ -1103,7 +1431,7 @@ Roughly equal to number of cores used")]
             }
         }
 
-#endregion // Avatar Loading
+        #endregion // Avatar Loading
 
         private void QueueResourceLoad(OvrAvatarResourceLoader loader)
         {

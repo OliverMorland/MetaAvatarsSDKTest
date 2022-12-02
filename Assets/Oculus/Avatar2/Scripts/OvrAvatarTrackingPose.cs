@@ -7,38 +7,63 @@ using UnityEngine;
 namespace Oculus.Avatar2
 {
     /**
-     * Describes a contiguous array of structures.
-     * Used to transfer data between C# and native.
-     */
-    public ref struct OvrSpan<T> where T : struct
-    {
-        private readonly IntPtr _ptr;
-        private readonly int _length;
-
-        public int Length => _length;
-
-        public unsafe OvrSpan(void* ptr, int length)
-        {
-            _ptr = new IntPtr(ptr);
-            _length = length;
-        }
-    }
-
-    /**
-     * Collects the position and orientation of each bone and
-     * converts to and from C# and C++ native versions.
+     * The purpose of this struct is to wrap CAPI.ovrAvatar2TrackingBodyPose,
+     * so that application code can write pose data into
+     * a native ovrAvatar2TrackingBodyPose struct owned by the avatar SDK.
      * @see OvrAvatarBodyTrackingContextBase
+     * @see CAPI.ovrAvatar2TrackingBodyPose
      */
     public ref struct OvrAvatarTrackingPose
     {
         /// Coordinate space of this pose (local or object).
         public CAPI.ovrAvatar2Space space;
 
-        /// Contiguous array of 4x4 bone transforms.
-        public readonly OvrSpan<CAPI.ovrAvatar2Transform> bones;
+        /// A reference to an array of bone transforms inside the underlying native struct.
+        public readonly OvrSpan<CAPI.ovrAvatar2Transform> transforms;
 
-        /// Handle to native bone data.
-        private readonly IntPtr _bonesPtr;
+        /**
+         * Set bone transform by index.
+         * @param newTransform  new transform.
+         * @param index         which index in array to copy to.
+         * @returns true if index is valid, false otherwise.
+         */
+        public bool SetTransform(CAPI.ovrAvatar2Transform newTransform, int index)
+        {
+            if (index < 0 || index >= transforms.Length)
+            {
+                return false;
+            }
+            unsafe
+            {
+                CAPI.ovrAvatar2Transform* ptr = (CAPI.ovrAvatar2Transform*)transforms.Address;
+                *(ptr + index) = newTransform;
+            }
+            return true;
+        }
+
+        /**
+         * Set transform of multiple bones.
+         * @param newTransforms     new transform array.
+         * @param offset            offset index to start copy.
+         * @param count             number of transforms to copy.
+         * @returns true if copy succeed, false otherwise.
+         */
+        public bool SetTransforms(CAPI.ovrAvatar2Transform[] newTransforms, int offset, int count)
+        {
+            if (offset < 0 || count <= 0 || (offset + count) > newTransforms.Length)
+            {
+                return false;
+            }
+            unsafe
+            {
+                CAPI.ovrAvatar2Transform* ptr = (CAPI.ovrAvatar2Transform*)transforms.Address;
+                for (int i = offset; i < offset + count; ++i)
+                {
+                    *(ptr + i) = newTransforms[i];
+                }
+            }
+            return true;
+        }
 
         /**
          * Create a C# struct from a native pose.
@@ -48,8 +73,7 @@ namespace Oculus.Avatar2
             space = pose.space;
             unsafe
             {
-                bones = new OvrSpan<CAPI.ovrAvatar2Transform>(pose.bones, (int)pose.numBones);
-                _bonesPtr = new IntPtr(pose.bones);
+                transforms = new OvrSpan<CAPI.ovrAvatar2Transform>(pose.bones, (int)pose.numBones);
             }
         }
 
@@ -62,8 +86,9 @@ namespace Oculus.Avatar2
         {
             unsafe
             {
-                Debug.Assert(bones.Length == native.numBones);
-                Debug.Assert(_bonesPtr.ToPointer() == native.bones);
+                Debug.Assert(transforms.Length == native.numBones);
+                CAPI.ovrAvatar2Transform* ptr = (CAPI.ovrAvatar2Transform*)transforms.Address;
+                Debug.Assert(ptr == native.bones);
             }
             native.space = space;
         }
@@ -77,8 +102,8 @@ namespace Oculus.Avatar2
         {
             unsafe
             {
-                return new CAPI.ovrAvatar2TrackingBodyPose((CAPI.ovrAvatar2Transform*)_bonesPtr.ToPointer(),
-                    (UInt32)bones.Length)
+                CAPI.ovrAvatar2Transform* ptr = (CAPI.ovrAvatar2Transform*)transforms.Address;
+                return new CAPI.ovrAvatar2TrackingBodyPose(ptr, (UInt32)transforms.Length)
                 {
                     space = space
                 };
@@ -94,10 +119,10 @@ namespace Oculus.Avatar2
         {
             unsafe
             {
-                Debug.Assert(bones.Length == native.numBones);
-                Debug.Assert(_bonesPtr.ToPointer() == native.bones);
+                Debug.Assert(transforms.Length == native.numBones);
+                CAPI.ovrAvatar2Transform* ptr = (CAPI.ovrAvatar2Transform*)transforms.Address;
+                Debug.Assert(ptr == native.bones);
             }
-
             space = native.space;
         }
     }

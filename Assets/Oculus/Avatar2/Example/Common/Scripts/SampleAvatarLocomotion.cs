@@ -1,3 +1,7 @@
+#if USING_XR_MANAGEMENT && USING_XR_SDK_OCULUS && !OVRPLUGIN_UNSUPPORTED_PLATFORM
+#define USING_XR_SDK
+#endif
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -13,9 +17,11 @@ public class SampleAvatarLocomotion : MonoBehaviour
 
     void Update()
     {
+#if USING_XR_SDK
         // Moves the avatar forward/back and left/right based on primary input
         var primaryThumbstickVector = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick);
         var translationVector = new Vector3(primaryThumbstickVector.x, 0.0f, primaryThumbstickVector.y);
         transform.Translate(translationVector * Time.deltaTime * movementSpeed);
+#endif
     }
 }

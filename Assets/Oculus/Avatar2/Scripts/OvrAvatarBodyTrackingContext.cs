@@ -8,6 +8,8 @@ namespace Oculus.Avatar2
     ///
     public sealed class OvrAvatarBodyTrackingContext : OvrAvatarBodyTrackingContextBase, IOvrAvatarNativeBodyTracking
     {
+        private const string logScope = "BodyTrackingContext";
+
         private IntPtr _context;
         private IOvrAvatarHandTrackingDelegate _handTrackingDelegate;
         private IOvrAvatarInputTrackingDelegate _inputTrackingDelegate;
@@ -35,31 +37,21 @@ namespace Oculus.Avatar2
                 if (_handTrackingDelegate is IOvrAvatarNativeHandDelegate nativeHandDelegate)
                 {
                     var nativeContext = nativeHandDelegate.NativeContext;
-                    var nativeResult = CAPI.ovrAvatar2Body_SetHandTrackingContextNative(_context, ref nativeContext);
-                    if (nativeResult != CAPI.ovrAvatar2Result.Success)
-                    {
-                        OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetHandTrackingContextNative failed with {nativeResult}");
-                    }
+                    CAPI.ovrAvatar2Body_SetHandTrackingContextNative(_context, nativeContext)
+                        .EnsureSuccess("ovrAvatar2Body_SetHandTrackingContextNative", logScope);
                 }
                 else
                 {
                     // Set hand callbacks
-                    var handContext = new CAPI.ovrAvatar2HandTrackingDataContext
+                    var handContext = new CAPI.ovrAvatar2HandTrackingDataContext();
+                    if (_handTrackingDelegate != null)
                     {
-                        context = new IntPtr(id),
-                        handTrackingCallback = HandTrackingCallback
+                        handContext.context = new IntPtr(id);
+                        handContext.handTrackingCallback = HandTrackingCallback;
                     };
-                    // Set an empty callback if there is no delegate
-                    if (_handTrackingDelegate == null)
-                    {
-                        handContext = new CAPI.ovrAvatar2HandTrackingDataContext();
-                    }
 
-                    var result = CAPI.ovrAvatar2Body_SetHandTrackingContext(_context, ref handContext);
-                    if (result != CAPI.ovrAvatar2Result.Success)
-                    {
-                        OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetHandTrackingContext failed with {result}");
-                    }
+                    CAPI.ovrAvatar2Body_SetHandTrackingContext(_context, handContext)
+                        .EnsureSuccess("ovrAvatar2Body_SetHandTrackingContext", logScope);
                 }
             }
         }
@@ -72,22 +64,15 @@ namespace Oculus.Avatar2
                 _inputTrackingDelegate = value;
 
                 {
-                    var inputContext = new CAPI.ovrAvatar2InputTrackingContext
+                    var inputContext = new CAPI.ovrAvatar2InputTrackingContext();
+                    if (_inputTrackingDelegate != null)
                     {
-                        context = new IntPtr(id),
-                        inputTrackingCallback = InputTrackingCallback
+                        inputContext.context = new IntPtr(id);
+                        inputContext.inputTrackingCallback = InputTrackingCallback;
                     };
 
-                    if (_inputTrackingDelegate == null)
-                    {
-                        inputContext = new CAPI.ovrAvatar2InputTrackingContext();
-                    }
-
-                    var result = CAPI.ovrAvatar2Body_SetInputTrackingContext(_context, ref inputContext);
-                    if (result != CAPI.ovrAvatar2Result.Success)
-                    {
-                        OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetInputTrackingContext failed with {result}");
-                    }
+                    CAPI.ovrAvatar2Body_SetInputTrackingContext(_context, inputContext)
+                        .EnsureSuccess("ovrAvatar2Body_SetInputTrackingContext", logScope);
                 }
             }
         }
@@ -102,22 +87,15 @@ namespace Oculus.Avatar2
                 _inputControlDelegate = value;
 
                 {
-                    var inputContext = new CAPI.ovrAvatar2InputControlContext
+                    var inputContext = new CAPI.ovrAvatar2InputControlContext();
+                    if (_inputControlDelegate != null)
                     {
-                        context = new IntPtr(id),
-                        inputControlCallback = InputControlCallback
-                    };
-
-                    if (_inputControlDelegate == null)
-                    {
-                        inputContext = new CAPI.ovrAvatar2InputControlContext();
+                        inputContext.context = new IntPtr(id);
+                        inputContext.inputControlCallback = InputControlCallback;
                     }
 
-                    var result = CAPI.ovrAvatar2Body_SetInputControlContext(_context, ref inputContext);
-                    if (result != CAPI.ovrAvatar2Result.Success)
-                    {
-                        OvrAvatarLog.LogError($"ovrAvatar2Tracking_SetInputControlContext failed with {result}");
-                    }
+                    CAPI.ovrAvatar2Body_SetInputControlContext(_context, inputContext)
+                        .EnsureSuccess("ovrAvatar2Body_SetInputControlContext", logScope);
                 }
             }
         }
@@ -142,62 +120,49 @@ namespace Oculus.Avatar2
 
         private OvrAvatarBodyTrackingContext(bool runAsync)
         {
-            var result = CAPI.ovrAvatar2Body_CreateProvider(runAsync ? CAPI.ovrAvatar2BodyProviderCreateFlags.RunAsync : 0, out _context);
-            if (result != CAPI.ovrAvatar2Result.Success)
+            if (!CAPI.ovrAvatar2Body_CreateProvider(runAsync ? CAPI.ovrAvatar2BodyProviderCreateFlags.RunAsync : 0, out _context)
+                    .EnsureSuccess("ovrAvatar2Body_CreateProvider", logScope))
             {
-                OvrAvatarLog.LogError($"ovrAvatar2Body_CreateProvider failed with {result}");
                 // Not sure which exception type is best
                 throw new Exception("Failed to create body tracking context");
             }
 
-
             HandTrackingDelegate = OvrAvatarManager.Instance.DefaultHandTrackingDelegate;
-
 
             _callbacks = CreateBodyDataContext();
 
-            result = CAPI.ovrAvatar2Body_InitializeDataContextNative(_context, out var nativeContext);
-            if (result == CAPI.ovrAvatar2Result.Success)
+            if (CAPI.ovrAvatar2Body_InitializeDataContextNative(_context, out var nativeContext)
+                .EnsureSuccess("ovrAvatar2Body_InitializeDataContextNative", logScope))
             {
                 _nativeContext = nativeContext;
-            }
-            else
-            {
-                OvrAvatarLog.LogError($"ovrAvatar2Body_InitializeDataContextNative failed with {result}");
             }
         }
 
         public void SetTransformOffset(CAPI.ovrAvatar2BodyMarkerTypes type, ref CAPI.ovrAvatar2Transform offset)
         {
-            var result = CAPI.ovrAvatar2Body_SetOffset(_context, type, ref offset);
-            if (result != CAPI.ovrAvatar2Result.Success)
-            {
-                OvrAvatarLog.LogError($"ovrAvatar2Body_SetOffset failed with {result}");
-            }
+            CAPI.ovrAvatar2Body_SetOffset(_context, type, offset)
+                .EnsureSuccess("ovrAvatar2Body_SetOffset", logScope);
         }
 
         private CAPI.ovrAvatar2TrackingDataContext? CreateBodyDataContext()
         {
-            var trackingContext = new CAPI.ovrAvatar2TrackingDataContext();
-            var result = CAPI.ovrAvatar2Body_InitializeDataContext(_context, ref trackingContext);
-            if (result != CAPI.ovrAvatar2Result.Success)
+            if (CAPI.ovrAvatar2Body_InitializeDataContext(_context, out var trackingContext)
+                .EnsureSuccess("ovrAvatar2Body_InitializeDataContext", logScope))
             {
-                OvrAvatarLog.LogError($"ovrAvatar2Body_InitializeDataContext failed with {result}");
+                return trackingContext;
+            }
+            else
+            {
                 return null;
             }
-
-            return trackingContext;
         }
 
         private void ReleaseUnmanagedResources()
         {
             if (_context == IntPtr.Zero) return;
             // Release unmanaged resources here
-            var result = CAPI.ovrAvatar2Body_DestroyProvider(_context);
-            if (result != CAPI.ovrAvatar2Result.Success)
-            {
-                OvrAvatarLog.LogError($"ovrAvatar2Body_DestroyProvider failed with {result}");
-            }
+            CAPI.ovrAvatar2Body_DestroyProvider(_context)
+                .EnsureSuccess("ovrAvatar2Body_DestroyProvider", logScope);
 
             _context = IntPtr.Zero;
         }
@@ -226,7 +191,7 @@ namespace Oculus.Avatar2
                 OvrAvatarLog.LogError(e.ToString());
             }
 
-            handsState = new CAPI.ovrAvatar2HandTrackingState();
+            handsState = default;
             return false;
         }
 
@@ -275,6 +240,7 @@ namespace Oculus.Avatar2
             return false;
         }
 
+        // Provides a Body State by calling into the native Body Tracking implementation
         protected override bool GetBodyState(OvrAvatarTrackingBodyState bodyState)
         {
             if (_callbacks.HasValue)
@@ -289,6 +255,7 @@ namespace Oculus.Avatar2
             return false;
         }
 
+        // Provides a Tracking Skeleton by calling into the native Body Tracking implementation
         protected override bool GetBodySkeleton(ref OvrAvatarTrackingSkeleton skeleton)
         {
             if (_callbacks.HasValue)
@@ -307,6 +274,7 @@ namespace Oculus.Avatar2
             return false;
         }
 
+        // Provides a Body Pose by calling into the native Body Tracking implementation
         protected override bool GetBodyPose(ref OvrAvatarTrackingPose pose)
         {
             if (_callbacks.HasValue)

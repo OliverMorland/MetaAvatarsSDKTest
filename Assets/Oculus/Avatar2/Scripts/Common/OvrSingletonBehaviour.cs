@@ -5,7 +5,7 @@ namespace Oculus.Avatar2
     //https://wiki.unity3d.com/index.php/Singleton
     public class OvrSingletonBehaviour<T> : MonoBehaviour where T : OvrSingletonBehaviour<T>
     {
-        private const string logScope = "OvrSingletonBehaviour";
+        private const string logScope = nameof(T);
 
         public static bool hasInstance => !shuttingDown && Instance != null && !Instance._willShutdown;
 
@@ -22,15 +22,19 @@ namespace Oculus.Avatar2
         {
             if (hasInstance)
             {
-                OvrAvatarLog.LogError($"Instantiate called when singleton of {typeof(T).Name} already exists", logScope);
+                OvrAvatarLog.LogError($"Instantiate called when singleton of {typeof(T).Name} already exists"
+                    , logScope, Instance);
             }
             else if (initializing)
             {
-                OvrAvatarLog.LogError($"Instantiate called when singleton of {typeof(T).Name} is already initializing", logScope);
+                OvrAvatarLog.LogError(
+                    $"Instantiate called when singleton of {typeof(T).Name} is already initializing"
+                    , logScope, Instance);
             }
             else if (shuttingDown)
             {
-                OvrAvatarLog.LogError($"Instantiate called when singleton of {typeof(T).Name} is already shutting down", logScope);
+                OvrAvatarLog.LogError($"Instantiate called when singleton of {typeof(T).Name} is already shutting down"
+                    , logScope, Instance);
             }
 
             Debug.Assert(!hasInstance && !initializing && !shuttingDown);
@@ -47,14 +51,16 @@ namespace Oculus.Avatar2
                     {
                         // Need to create a new GameObject to attach the singleton to.
                         var singletonObject = new GameObject(typeof(T) + " (Singleton)", typeof(T));
-                        OvrAvatarLog.LogDebug($"Singleton '{typeof(T).Name}' instance not found in scene, created {singletonObject.name}."
+                        OvrAvatarLog.LogDebug($"Singleton instance not found in scene, created {singletonObject.name}."
                             , logScope, singletonObject);
 
                         singletonObject.GetComponent<T>().CheckStartup();
                     }
                     else
                     {
-                        OvrAvatarLog.LogError($"Singleton '{typeof(T).Name}' attempted spawn during shutdown. Ignoring.", logScope);
+                        OvrAvatarLog.LogError(
+                            $"Singleton '{typeof(T).Name}' attempted spawn during shutdown. Ignoring."
+                            , logScope, sceneInstance);
                     }
                 }
                 else if (!sceneInstance._hasStarted)
@@ -65,12 +71,16 @@ namespace Oculus.Avatar2
                     }
                     else
                     {
-                        OvrAvatarLog.LogError($"Singleton '{typeof(T).Name}' is in scene but disabled, no instance created.", logScope, sceneInstance);
+                        OvrAvatarLog.LogError(
+                            $"Singleton '{typeof(T).Name}' is in scene but disabled, no instance created."
+                            , logScope, sceneInstance);
                     }
                 }
                 else
                 {
-                    OvrAvatarLog.LogWarning($"Singleton `{typeof(T).Name}` was started before Instantiate!", logScope, sceneInstance);
+                    OvrAvatarLog.LogWarning(
+                        $"Singleton `{typeof(T).Name}` was started before Instantiate!"
+                        , logScope, sceneInstance);
                 }
             }
         }
@@ -78,16 +88,19 @@ namespace Oculus.Avatar2
         protected virtual void Initialize() { }
         protected virtual void Shutdown() { }
 
-        protected void Awake() => CheckStartup();
+        // Derived singleton classes can not reliably implement Awake
+        // TODO: This should not be virtual - T118570727
+        protected virtual void Awake() => CheckStartup();
+
         // Derived classes can not reliably implement Awake or Start,
         // but we don't have anything to do in Start and implementing it will add overhead at runtime
         // TODO: Better way to accomplish this goal
 #if UNITY_EDITOR
-        protected void Start() { }
+        protected virtual void Start() { }
 #endif
 
-        protected void OnApplicationQuit() => CheckShutdown(false);
-        protected void OnDestroy() => CheckShutdown(true);
+        protected virtual void OnApplicationQuit() => CheckShutdown(false);
+        protected virtual void OnDestroy() => CheckShutdown(true);
 
         // For error detection
 
@@ -143,7 +156,7 @@ namespace Oculus.Avatar2
                     // `DontDestroyOnLoad` requires root parent
                     if (transform.parent == null)
                     {
-                        OvrAvatarLog.LogDebug($"Marking DontDestroyOnLoad on {this}"
+                        OvrAvatarLog.LogDebug("Marking DontDestroyOnLoad on singleton"
                             , logScope, this);
 
                         OvrSingletonBehaviour<T>.DontDestroyOnLoad(this);
@@ -219,10 +232,9 @@ namespace Oculus.Avatar2
         {
             if (instance is null) { return; }
 
-            OvrAvatarLog.Assert(instance is U);
-            OvrAvatarLog.Assert(manager != null);
-            OvrAvatarLog.Assert(manager._willShutdown);
-            OvrAvatarLog.Assert(manager == OvrAvatarManager.Instance);
+            OvrAvatarLog.Assert(manager != null, logScope, Instance);
+            OvrAvatarLog.Assert(manager._willShutdown, logScope, Instance);
+            OvrAvatarLog.Assert(manager == OvrAvatarManager.Instance, logScope, Instance);
 
             if (instance.IsSingletonInstance)
             {
@@ -239,7 +251,7 @@ namespace Oculus.Avatar2
                 {
                     Instance.CheckShutdown(false);
                 }
-                OvrAvatarLog.Assert(Instance == null);
+                OvrAvatarLog.Assert(Instance == null, logScope, Instance);
                 Instance = null;
             }
         }

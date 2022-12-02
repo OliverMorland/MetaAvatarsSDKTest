@@ -76,6 +76,9 @@ namespace Oculus.Avatar2
 
             /// Oculus Quest 2 controller
             Quest2 = 2,
+
+            /// Meta Quest Pro controller
+            QuestPro = 3,
         }
 
         ///
@@ -136,7 +139,7 @@ namespace Oculus.Avatar2
         /// @see ovrAvatar2InputControlState
         ///
         [StructLayout(LayoutKind.Sequential)]
-        public unsafe struct ovrAvatar2InputTrackingState
+        public struct ovrAvatar2InputTrackingState
         {
             // True if the headset is currently tracked and valid.
             [MarshalAs(UnmanagedType.U1)]
@@ -267,11 +270,19 @@ namespace Oculus.Avatar2
             /// Position, orientation and scale for each bone in the skeleton.
             public readonly ovrAvatar2Transform* bones;
 
-            public ovrAvatar2TrackingBodyPose(ovrAvatar2Transform* bones, UInt32 numBones, ovrAvatar2Space space = ovrAvatar2Space.Unknown)
+            /// Scale value of left hand.
+            public readonly float leftHandScale;
+
+            /// Scale value of right hand.
+            public readonly float rightHandScale;
+
+            public ovrAvatar2TrackingBodyPose(ovrAvatar2Transform* bones, UInt32 numBones, ovrAvatar2Space space = ovrAvatar2Space.Unknown, float leftHandScale = 1.0f, float rightHandScale = 1.0f)
             {
                 this.space = space;
                 this.numBones = numBones;
                 this.bones = bones;
+                this.leftHandScale = leftHandScale;
+                this.rightHandScale = rightHandScale;
             }
         };
 
@@ -342,9 +353,9 @@ namespace Oculus.Avatar2
         /// @see ovrAvatar2TrackingBodyModality
         ///
         [StructLayout(LayoutKind.Sequential)]
-        public struct ovrAvatar2TrackingBodyState
+        public ref struct ovrAvatar2TrackingBodyState
         {
-            /// position, orientation and scale of headset and left and right controllers.
+            /// Position, orientation and scale of headset and left and right controllers.
             public ovrAvatar2InputTrackingState inputTrackingState;
 
             /// Input state for left and right controllers.
@@ -364,6 +375,12 @@ namespace Oculus.Avatar2
 
             /// Avatar body modality.
             public ovrAvatar2TrackingBodyModality bodyModality;
+
+            /// Scale value of left hand.
+            public float leftHandScale;
+
+            /// Scale value of right hand.
+            public float rightHandScale;
         }
 
         ///
@@ -447,11 +464,11 @@ namespace Oculus.Avatar2
         }
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetBodyTrackingContext(ovrAvatar2EntityId entityId, ref ovrAvatar2TrackingDataContext context);
+        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetBodyTrackingContext(ovrAvatar2EntityId entityId, in ovrAvatar2TrackingDataContext context);
 
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ovrAvatar2Tracking_SetBodyTrackingContext")]
-        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetBodyTrackingContextNative(ovrAvatar2EntityId entityId, ref ovrAvatar2TrackingDataContextNative context);
+        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetBodyTrackingContextNative(ovrAvatar2EntityId entityId, in ovrAvatar2TrackingDataContextNative context);
 
         #endregion Tracking
 
@@ -553,10 +570,10 @@ namespace Oculus.Avatar2
         }
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetLipSyncContext(ovrAvatar2EntityId entityId, ref ovrAvatar2LipSyncContext context);
+        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetLipSyncContext(ovrAvatar2EntityId entityId, in ovrAvatar2LipSyncContext context);
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ovrAvatar2Tracking_SetLipSyncContext")]
-        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetLipSyncContextNative(ovrAvatar2EntityId entityId, ref ovrAvatar2LipSyncContextNative context);
+        internal static extern ovrAvatar2Result ovrAvatar2Tracking_SetLipSyncContextNative(ovrAvatar2EntityId entityId, in ovrAvatar2LipSyncContextNative context);
 
 
         [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
@@ -580,5 +597,183 @@ namespace Oculus.Avatar2
         ovrAvatar2EntityId entityId, int index, byte* nameBuffer, UInt32 bufferSize);
         #endregion LipSync
 
+
+        #region Face
+        //-----------------------------------------------------------------
+        //
+        // Face
+        //
+        //
+
+        public enum ovrAvatar2FaceExpression : Int32
+        {
+            BrowLowererL = 0,
+            BrowLowererR = 1,
+
+            CheekPuffL = 2,
+            CheekPuffR = 3,
+            CheekRaiserL = 4,
+            CheekRaiserR = 5,
+            CheekSuckL = 6,
+            CheekSuckR = 7,
+
+            ChinRaiserL = 8,
+            ChinRaiserR = 9,
+
+            DimplerL = 10,
+            DimplerR = 11,
+
+            EyesClosedL = 12,
+            EyesClosedR = 13,
+            EyesLookDownL = 14,
+            EyesLookDownR = 15,
+            EyesLookLeftL = 16,
+            EyesLookLeftR = 17,
+            EyesLookRightL = 18,
+            EyesLookRightR = 19,
+            EyesLookUpL = 20,
+            EyesLookUpR = 21,
+
+            InnerBrowRaiserL = 22,
+            InnerBrowRaiserR = 23,
+
+            JawDrop = 24,
+            JawSidewaysLeft = 25,
+            JawSidewaysRight = 26,
+            JawThrust = 27,
+
+            LidTightenerL = 28,
+            LidTightenerR = 29,
+
+            LipCornerDepressorL = 30,
+            LipCornerDepressorR = 31,
+            LipCornerPullerL = 32,
+            LipCornerPullerR = 33,
+            LipFunnelerLB = 34,
+            LipFunnelerLT = 35,
+            LipFunnelerRB = 36,
+            LipFunnelerRT = 37,
+            LipPressorL = 38,
+            LipPressorR = 39,
+            LipPuckerL = 40,
+            LipPuckerR = 41,
+            LipStretcherL = 42,
+            LipStretcherR = 43,
+            LipSuckLB = 44,
+            LipSuckLT = 45,
+            LipSuckRB = 46,
+            LipSuckRT = 47,
+            LipTightenerL = 48,
+            LipTightenerR = 49,
+            LipsTowardLB = 50,
+            LipsTowardLT = 51,
+            LipsTowardRB = 52,
+            LipsTowardRT = 53,
+            LowerLipDepressorL = 54,
+            LowerLipDepressorR = 55,
+
+            MouthLeft = 56,
+            MouthRight = 57,
+
+            NasiolabialFurrowL = 58,
+            NasiolabialFurrowR = 59,
+
+            NoseWrinklerL = 60,
+            NoseWrinklerR = 61,
+            NostrilCompressorL = 62,
+            NostrilCompressorR = 63,
+            NostrilDilatorL = 64,
+            NostrilDilatorR = 65,
+
+            OuterBrowRaiserL = 66,
+            OuterBrowRaiserR = 67,
+
+            UpperLidRaiserL = 68,
+            UpperLidRaiserR = 69,
+            UpperLipRaiserL = 70,
+            UpperLipRaiserR = 71,
+
+            Count = 72
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct ovrAvatar2FacePose
+        {
+            public fixed float expressionWeights[(int)ovrAvatar2FaceExpression.Count];
+            public fixed float expressionConfidence[(int)ovrAvatar2FaceExpression.Count];
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        internal delegate bool FacePoseCallback(out ovrAvatar2FacePose facePose, IntPtr userContext);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ovrAvatar2FacePoseProvider
+        {
+            public IntPtr provider;
+            public FacePoseCallback facePoseCallback;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ovrAvatar2FacePoseProviderNative
+        {
+            public IntPtr provider;
+            public IntPtr facePoseCallback;
+        }
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern ovrAvatar2Result ovrAvatar2Input_SetFacePoseProvider(ovrAvatar2EntityId entityId
+            , in ovrAvatar2FacePoseProvider provider);
+
+        [DllImport(
+            LibFile, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ovrAvatar2Input_SetFacePoseProvider")]
+        internal static extern ovrAvatar2Result ovrAvatar2Input_SetFacePoseProviderNative(ovrAvatar2EntityId entityId
+            , in ovrAvatar2FacePoseProviderNative provider);
+        #endregion Face
+
+        #region Eye
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ovrAvatar2EyePose
+        {
+            public ovrAvatar2Quatf orientation;
+            public ovrAvatar2Vector3f position;
+            [MarshalAs(UnmanagedType.U1)]
+            public bool isValid;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ovrAvatar2EyesPose
+        {
+            public ovrAvatar2EyePose leftEye;
+            public ovrAvatar2EyePose rightEye;
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        internal delegate bool EyePoseCallback(out ovrAvatar2EyesPose eyePose, IntPtr userContext);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ovrAvatar2EyePoseProvider
+        {
+            public IntPtr provider;
+            public EyePoseCallback eyePoseCallback;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ovrAvatar2EyePoseProviderNative
+        {
+            public IntPtr provider;
+            public IntPtr eyePoseCallback;
+        }
+
+        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern ovrAvatar2Result ovrAvatar2Input_SetEyePoseProvider(ovrAvatar2EntityId entityId
+            , in ovrAvatar2EyePoseProvider context);
+
+        [DllImport(
+            LibFile, CallingConvention = CallingConvention.Cdecl, EntryPoint = "ovrAvatar2Input_SetEyePoseProvider")]
+        internal static extern ovrAvatar2Result ovrAvatar2Input_SetEyePoseProviderNative(ovrAvatar2EntityId entityId
+            , in ovrAvatar2EyePoseProviderNative context);
+        #endregion Eye
     }
 }

@@ -12,9 +12,9 @@
 
 #include "../AvatarCommon/AvatarShaderTypes.cginc"
 #include "../AvatarCommon/AvatarCommonProperties.cginc"
-#include "../../AvatarCustom.cginc"
+#include "../../../../../Scripts/ShaderUtils/AvatarCustom.cginc"
 #include "AvatarVGITypes.cginc"
-#include "Horizon/VertexGI/SurfaceShader.cginc"
+#include "../Horizon/VertexGI/SurfaceShader.cginc"
 
 #ifdef FADE_ON
   #define DECLARE_COVERAGE_MASK  , out uint outputCoverageMask : SV_Coverage

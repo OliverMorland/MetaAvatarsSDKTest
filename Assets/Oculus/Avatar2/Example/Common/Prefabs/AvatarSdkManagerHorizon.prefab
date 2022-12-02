@@ -61,6 +61,8 @@ MonoBehaviour:
     type: 2}
   HairShaderConfigurationInitializer: {fileID: 11400000, guid: c4b830c6fb33d8140833e5b37f7c9e0d,
     type: 2}
+  FastLoadConfigurationInitializer: {fileID: 11400000, guid: d6a8914844d40284395dca35471c343b,
+    type: 2}
 --- !u!1001 &1350790283880007406
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -132,6 +134,26 @@ PrefabInstance:
       propertyPath: shaderManager
       value: 
       objectReference: {fileID: 3255524753290351637}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: UseFastLoadAvatar
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: assetVersionQuest2
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: assetVersionAndroid
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 4870205409715631024, guid: f11d19b383e9e94489eacb1f0b55e99b,
+        type: 3}
+      propertyPath: assetVersionDefault
+      value: 4
+      objectReference: {fileID: 0}
     - target: {fileID: 4870205409715631025, guid: f11d19b383e9e94489eacb1f0b55e99b,
         type: 3}
       propertyPath: m_RootOrder

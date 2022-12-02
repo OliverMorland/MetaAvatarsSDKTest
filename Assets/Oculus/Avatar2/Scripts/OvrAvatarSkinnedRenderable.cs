@@ -27,27 +27,27 @@ public abstract class OvrAvatarSkinnedRenderable : OvrAvatarRenderable
      * @see ApplyMeshPrimitive
      * @see OvrAvatarUnitySkinnedRenderable
      */
-    private const string logScope = "SkinnedRenderable";
 
-    // TODO: Move to CpuSkinnedRenderable class - or a UnitySkinnedRenderable
-    public override void ApplyMeshPrimitive(OvrAvatarPrimitive primitive)
+    /// Designates whether this renderable animations are enabled or not.
+    private bool _isAnimationEnabled = true;
+    public bool IsAnimationEnabled
+    {
+        get => _isAnimationEnabled;
+        internal set
+        {
+            if (_isAnimationEnabled != value)
+            {
+                _isAnimationEnabled = value;
+                OnAnimationEnabledChanged(_isAnimationEnabled);
+            }
+        }
+    }
+
+    protected internal override void ApplyMeshPrimitive(OvrAvatarPrimitive primitive)
     {
         CheckDefaultRenderer();
 
         base.ApplyMeshPrimitive(primitive);
-
-        // TODO: May not need to copy for all SkinnedRenderables - or can share copies between some.
-        // For now we need to ensure mats aren't getting shared accross invalid contexts
-        CopyMaterial();
-
-        // Initialize for the SkinnedMeshRenderer, not used for GPU Skinning
-        var skinnedMeshRenderer = rendererComponent as SkinnedMeshRenderer;
-        if (skinnedMeshRenderer != null)
-        {
-            // Initialize duplicate mesh structure to operate multiple avatars with different poses
-            skinnedMeshRenderer.sharedMesh = _mesh;
-            skinnedMeshRenderer.localBounds = primitive.hasBounds ? primitive.mesh.bounds : FixedBounds;
-        }
     }
 
     ///
@@ -61,25 +61,35 @@ public abstract class OvrAvatarSkinnedRenderable : OvrAvatarRenderable
     public abstract IDisposableBuffer CheckoutMorphTargetBuffer(uint morphCount);
     public abstract void MorphTargetBufferUpdated(IDisposableBuffer buffer);
 
-    public virtual void UpdateSkinningOrigin(CAPI.ovrAvatar2Transform skinningOrigin)
+    public virtual void UpdateSkinningOrigin(in CAPI.ovrAvatar2Transform skinningOrigin)
     {
         // Default implementation is just to apply to transform
         transform.ApplyOvrTransform(skinningOrigin);
     }
 
-    public abstract bool UpdateJointMatrices(CAPI.ovrAvatar2EntityId entityId, OvrAvatarPrimitive primitive, CAPI.ovrAvatar2PrimitiveRenderInstanceID primitiveInstanceId);
+    public abstract bool UpdateJointMatrices(
+        CAPI.ovrAvatar2EntityId entityId,
+        OvrAvatarPrimitive primitive,
+        CAPI.ovrAvatar2PrimitiveRenderInstanceID primitiveInstanceId);
+
+    // Invoked when `IsAnimationEnabled` changes.
+    protected abstract void OnAnimationEnabledChanged(bool isNowEnabled);
+    internal abstract void AnimationFrameUpdate();
+    internal abstract void RenderFrameUpdate();
+    internal abstract bool IsAnimationDataCompletelyValid { get; }
+
+    internal delegate void AnimationDataCompletionHandler(OvrAvatarSkinnedRenderable sender);
+    internal event AnimationDataCompletionHandler AnimationDataComplete;
+
+    protected void OnAnimationDataCompleted()
+    {
+        // Safely raise the event for all subscribers
+        AnimationDataComplete?.Invoke(this);
+    }
 
     // TODO: Reference count
     public interface IDisposableBuffer : IDisposable
     {
         IntPtr BufferPtr { get; }
     }
-
-    #region Bounds support
-    /// Bounding box for the skinned avatar, should encompass arms reaching in all dimensions.
-    [Tooltip("This must be found empirically and encompass the arms reach in all 3 dimensions.")]
-    [SerializeField] private Bounds FixedBounds = new Bounds(new Vector3(0f, 0.5f, 0.0f), new Vector3(2.0f, 2.0f, 2.0f));
-
-    #endregion
-
 }

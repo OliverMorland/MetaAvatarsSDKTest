@@ -21,10 +21,12 @@
 #include "UnityLightingCommon.cginc"
 
 #define MATERIAL_METALLICROUGHNESS
+#ifdef MATERIAL_MODE_TEXTURE
 #define HAS_BASE_COLOR_MAP
 #define HAS_EMISSIVE_MAP
 #define HAS_OCCLUSION_MAP
 #define HAS_METALLIC_ROUGHNESS_MAP
+#endif
 
 // #define HAS_SPECULAR_GLOSSINESS_MAP
 // #define HAS_DIFFUSE_MAP
@@ -62,7 +64,7 @@
 #include "tonemapping.cginc"
 #include "textures.cginc"
 #include "functions.cginc"
-#include "submesh.cginc"
+#include "../../../../Scripts/ShaderUtils/AvatarSubmesh.cginc"
 #include "UnityGIAvatar.cginc"
 
 struct Light {
@@ -123,8 +125,8 @@ struct MaterialInfo {
 // Calculation of the lighting contribution from an optional Image Based Light source.
 // Precomputed Environment Maps are required uniform inputs and are computed as outlined in [1].
 // See our README.md on Environment Maps [3] for additional discussion.
-#if defined(USE_IBL) || defined(DEBUG_IBL)
-float3 getIBLContribution(MaterialInfo materialInfo, float3 n, float3 v)
+#if defined(USE_IBL) || defined (DEBUG_IBL) || defined (DEBUG_IBL_DIFFUSE) || defined (DEBUG_IBL_SPECULAR)
+void getIBLContribution(inout float3 total, inout float3 diffuse, inout float3 specular, MaterialInfo materialInfo, float3 n, float3 v)
 {
     float NdotV = clamp(dot(n, v), 0.0, 1.0);
     float3 reflection = normalize(reflect(-v, n));
@@ -161,13 +163,13 @@ float3 getIBLContribution(MaterialInfo materialInfo, float3 n, float3 v)
     float3 specularLight = SRGBtoLINEAR(specularSample).rgb;
 #endif
 
-    float3 diffuse = diffuseLight * materialInfo.diffuseColor;
+    diffuse = diffuseLight * materialInfo.diffuseColor;
 #ifdef USE_IBL_BRDF_LUT
-    float3 specular = specularLight * (materialInfo.specularColor * brdf.x + brdf.y);
+    specular = specularLight * (materialInfo.specularColor * brdf.x + brdf.y);
 #else
-    float3 specular = specularLight * (materialInfo.specularColor);
+    specular = specularLight * (materialInfo.specularColor);
 #endif
-    return diffuse + specular;
+    total = diffuse + specular;
 }
 #endif
 
@@ -388,14 +390,6 @@ fixed4 frag (v2f i) : SV_Target
 {
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
 
-    // the translation of getVertexColor() from GLSL is very inefficient
-    float4 v_Color;
-#if defined(HAS_VERTEX_COLOR_float3) || defined(HAS_VERTEX_COLOR_float4)
-    v_Color = getVertexColor(i.v_Color);
-#else
-    v_Color = getVertexColor();
-#endif
-
     // Metallic and Roughness material properties are packed together
     // In glTF, these factors can be specified by fixed scalar values
     // or from a metallic-roughness map
@@ -418,15 +412,6 @@ fixed4 frag (v2f i) : SV_Target
     f0 = u_SpecularFactor;
     perceptualRoughness = 1.0 - u_GlossinessFactor;
 #endif // ! HAS_SPECULAR_GLOSSINESS_MAP
-
-#ifdef HAS_DIFFUSE_MAP
-    baseColor =
-        SRGBtoLINEAR(tex2D(u_DiffuseSampler, getDiffuseUV(i.v_UVCoord1, i.v_UVCoord2))) * u_DiffuseFactor;
-#else
-    baseColor = u_DiffuseFactor;
-#endif // !HAS_DIFFUSE_MAP
-
-    baseColor *= v_Color;
 
 // AVATAR SDK BEGIN
     // IMPORTANT: Not originally part of the shader but used for tuning in viewers like Babylon
@@ -451,9 +436,14 @@ fixed4 frag (v2f i) : SV_Target
     // Roughness is stored in the 'g' channel, metallic is stored in the 'b' channel.
     // This layout intentionally reserves the 'r' channel for (optional) occlusion map
     // data
+#ifdef MATERIAL_MODE_TEXTURE
     float4 ormSample = tex2D(u_MetallicRoughnessSampler, getMetallicRoughnessUV(i.v_UVCoord1, i.v_UVCoord2));
     perceptualRoughness = ormSample.g * u_RoughnessFactor;
     metallic = ormSample.b * u_MetallicFactor;
+#else
+    perceptualRoughness = i.v_ORMT.g * u_RoughnessFactor;
+    metallic = i.v_ORMT.b * u_MetallicFactor;
+#endif
 #else
     metallic = u_MetallicFactor;
     perceptualRoughness = u_RoughnessFactor;
@@ -465,11 +455,12 @@ fixed4 frag (v2f i) : SV_Target
 // AVATAR END
 
     // The albedo may be defined from a base texture or a flat color
-#ifdef HAS_BASE_COLOR_MAP
+#if defined(HAS_BASE_COLOR_MAP) && defined(MATERIAL_MODE_TEXTURE)
     baseColor = tex2D(u_BaseColorSampler, getBaseColorUV(i.v_UVCoord1, i.v_UVCoord2)) *
         u_BaseColorFactor; // NOTE: for ease of use of the Unity editor, I moved the u_BaseColorFactor into the SRGBtoLinear conversion.
 #else
-    baseColor = u_BaseColorFactor;
+    baseColor.rgb = i.v_Color.rgb * u_BaseColorFactor.rgb;
+    baseColor.a = u_BaseColorFactor.a;
 #endif
 
     // Avatar Fbx Review Tool
@@ -481,8 +472,6 @@ fixed4 frag (v2f i) : SV_Target
 
     // IMPORTANT: Not originally part of the shader but used for tuning in viewers like Babylon
     f0 *= u_F0Factor;
-
-    baseColor *= v_Color;
 
     diffuseColor = baseColor.rgb * (float3(1.0,1.0,1.0) - f0) * (1.0 - metallic);
 
@@ -522,7 +511,7 @@ fixed4 frag (v2f i) : SV_Target
     float reflectanceclamp = clamp(reflectance * 50.0, 0.0, 1.0);
     float3 specularEnvironmentR90 = float3(reflectanceclamp, reflectanceclamp,reflectanceclamp);
 // AVATAR BEGIN
-// In order for this shader to even come close to Babylon and other off the shelf viewers, the 
+// In order for this shader to even come close to Babylon and other off the shelf viewers, the
 // specularEnvironmentR90 has to be affected by the specular color. If not, all sort of greyish
 // desaturation colors occur.
     specularEnvironmentR90 *= specularColor.rgb;
@@ -557,7 +546,9 @@ fixed4 frag (v2f i) : SV_Target
 
 #ifdef USE_PUNCTUAL
 #ifdef EYE_GLINTS
-    bool useEyeGlint = ((v_Color.a > (SUBMESH_TYPE_L_EYE-SUBMESH_TYPE_BUFFER) / 255.0) && (v_Color.a < (SUBMESH_TYPE_R_EYE+SUBMESH_TYPE_BUFFER) / 255.0));
+    bool useEyeGlint =
+        ((i.v_Color.a > (SUBMESH_TYPE_L_EYE - SUBMESH_TYPE_BUFFER) / 255.0) &&
+         (i.v_Color.a < (SUBMESH_TYPE_R_EYE + SUBMESH_TYPE_BUFFER) / 255.0));
     [branch]
     if (useEyeGlint)
     {
@@ -565,7 +556,7 @@ fixed4 frag (v2f i) : SV_Target
 
 #ifdef EYE_GLINTS_BEHIND
       // create a second reflected spec light to maintain an eye glint from the backside
-      float3 mirroredLightDirection = float3(-i.lightDir.x, i.lightDir.y, -i.lightDir.z); 
+      float3 mirroredLightDirection = float3(-i.lightDir.x, i.lightDir.y, -i.lightDir.z);
       materialInfo.diffuseColor = float3(0,0,0); // attenuate all the diffuse part, glint only comes from spec
       color += getPunctualContribution(materialInfo, normal, view, i.v_Position, i.worldPos, mirroredLightDirection, atten);
       materialInfo.diffuseColor = diffuseColor; // restore to original
@@ -581,12 +572,16 @@ fixed4 frag (v2f i) : SV_Target
 #endif
 
     // Calculate lighting contribution from image based lighting source (IBL)
-#if defined(USE_IBL)
-    color += getIBLContribution(materialInfo, normal, view);
+#if defined(USE_IBL) || defined (DEBUG_IBL) || defined (DEBUG_IBL_DIFFUSE) || defined (DEBUG_IBL_SPECULAR)
+    float3 totalIbl;
+    float3 diffuseIbl;
+    float3 specularIbl;
+    getIBLContribution(totalIbl, diffuseIbl, specularIbl, materialInfo, normal, view);
+    color += totalIbl;
 #endif
 
 #if defined(USE_SH_PER_VERTEX) || defined(USE_SH_PER_PIXEL) || defined(DEBUG_SH)
-    UnityGIInput giInput = GetGlobalIlluminationInput(i, i.lightDir, i.worldPos, view, atten); // the view here is supposed to be worldViewDir 
+    UnityGIInput giInput = GetGlobalIlluminationInput(i, i.lightDir, i.worldPos, view, atten); // the view here is supposed to be worldViewDir
 #endif
 
 #if defined(USE_SH_PER_VERTEX) || defined(USE_SH_PER_PIXEL)
@@ -597,10 +592,14 @@ fixed4 frag (v2f i) : SV_Target
     float ao = 1.0;
     // Apply optional PBR terms for additional (optional) shading
 #ifdef HAS_OCCLUSION_MAP
+#ifdef MATERIAL_MODE_TEXTURE
 #ifdef USE_ORM_EXTENSION
     ao = ormSample.r;
 #else
     ao = tex2D(u_OcclusionSampler, getOcclusionUV(i.v_UVCoord1, i.v_UVCoord2)).r;
+#endif
+#else
+    ao = i.v_ORMT.r;
 #endif
     color = lerp(color, color * ao, u_OcclusionStrength);
 #endif
@@ -619,7 +618,7 @@ fixed4 frag (v2f i) : SV_Target
 
 #else
 
-#if !(DEBUG_LIGHTING) 
+#if !(DEBUG_LIGHTING)
 
     // regular shading
     gl_FragColor = float4(toneMap(color), baseColor.a);
@@ -712,7 +711,23 @@ fixed4 frag (v2f i) : SV_Target
 #endif
 
 #ifdef DEBUG_IBL
-    gl_FragColor.rgb = getIBLContribution(materialInfo, normal, view);
+    gl_FragColor.rgb = totalIbl;
+    gl_FragColor = float4(toneMap(gl_FragColor.rgb), gl_FragColor.a);
+#endif
+
+#ifdef DEBUG_IBL_DIFFUSE
+    gl_FragColor.rgb = diffuseIbl;
+    gl_FragColor = float4(toneMap(gl_FragColor.rgb), gl_FragColor.a);
+#endif
+
+#ifdef DEBUG_IBL_SPECULAR
+    gl_FragColor.rgb = specularIbl;
+float3 reflection = normalize(reflect(-view, normal));
+float3 specularCoords = float3(-reflection.x, reflection.y, reflection.z);
+float lod = clamp(materialInfo.perceptualRoughness * float(u_MipCount), 0.0, float(u_MipCount));
+float4 specularSample = texCUBElod(u_SpecularEnvSampler, float4(specularCoords, lod));
+gl_FragColor.rgb = specularSample * materialInfo.specularColor; // lerp(f0, baseColor.rgb, metallic);
+
     gl_FragColor = float4(toneMap(gl_FragColor.rgb), gl_FragColor.a);
 #endif
 
@@ -723,6 +738,44 @@ fixed4 frag (v2f i) : SV_Target
 
 #ifdef DEBUG_NO_TONE_MAP
     gl_FragColor = float4(color, baseColor.a);
+#endif
+
+#ifdef DEBUG_SUBMESHES
+    float sudmeshId = i.v_Color.a + (0.5/255.0);
+    if (sudmeshId < 1024.0 / 255.0) {
+        gl_FragColor.rgb = vec3(1.0, 1.0, 1.0); // earrings       // 10
+    }
+    if (sudmeshId < 512.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.1, 0.1, 0.1);  // headwear     // 9
+    }
+    if (sudmeshId < 256.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.2, 0.1, 0.05);  // Facial Hair // 8
+    }
+    if (sudmeshId < 128.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.5, 0.0, 0.0);  // Lashes       // 7
+    }
+    if (sudmeshId < 64.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.0, 1.0, 0.0);  // R eye        // 6
+    }
+    if (sudmeshId < 32.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.0, 0.0, 1.0);  // L eye        // 5
+    }
+    if (sudmeshId < 16.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.24, 0.19, 0.08);  // brow      // 4
+    }
+    if (sudmeshId < 8.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.345, 0.27, 0.11);  // hair     // 3
+    }
+    if (sudmeshId < 4.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.77, 0.65, 0.65); // head       // 2
+    }
+    if (sudmeshId < 2.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.77, 0.65, 0.65); // body       // 1
+    }
+    if (sudmeshId < 1.0 / 255.0) {
+        gl_FragColor.rgb = vec3(0.2, 0.2, 0.2); // outfit        // 0
+    }
+
 #endif
 
     gl_FragColor.a = 1.0;

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -83,14 +84,9 @@ namespace Oculus.Skinning.GpuSkinning
             return _jointsData.CanFitAdditionalJoints(numJoints);
         }
 
-        public NativeSlice<OvrJointsData.JointData>? GetJointTransformMatricesArray(OvrSkinningTypes.Handle handle)
+        public IntPtr GetJointTransformMatricesArray(OvrSkinningTypes.Handle handle)
         {
             return _jointsData.GetJointTransformMatricesArray(handle);
-        }
-
-        public void UpdateJointTransformMatrices(OvrSkinningTypes.Handle handle)
-        {
-            _jointsData.UpdateJointTransformMatrices(handle);
         }
 
         [StructLayout(LayoutKind.Explicit, Size = VECTOR4_SIZE_BYTES * 3)]

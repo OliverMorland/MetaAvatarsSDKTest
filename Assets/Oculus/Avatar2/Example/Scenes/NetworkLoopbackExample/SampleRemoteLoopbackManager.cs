@@ -25,6 +25,20 @@ public class SampleRemoteLoopbackManager : MonoBehaviour
 
     private static readonly float[] StreamLodSnapshotIntervalSeconds = new float[OvrAvatarEntity.StreamLODCount] { 1f / 72, 2f / 72, 3f / 72, 4f / 72 };
 
+    // Public functions
+
+    // Configure the local and loopback avatars programmatically instead of from serialized fields. Must be called
+    // immediately after adding the component
+    public void Configure(OvrAvatarEntity localAvatar, List<OvrAvatarEntity> loopbackAvatars, SimulatedLatencySettings latencySettings = null)
+    {
+        _localAvatar = localAvatar;
+        _loopbackAvatars = loopbackAvatars;
+        if (latencySettings != null)
+        {
+            _simulatedLatencySettings = latencySettings;
+        }
+    }
+
     #region Internal Classes
 
     class PacketData : IDisposable
@@ -114,9 +128,12 @@ public class SampleRemoteLoopbackManager : MonoBehaviour
     #endregion
 
     // Serialized Variables
-    [SerializeField] private OvrAvatarEntity _localAvatar = null;
-    [SerializeField] private List<OvrAvatarEntity> _loopbackAvatars = null;
-    [SerializeField] private SimulatedLatencySettings _simulatedLatencySettings = new SimulatedLatencySettings();
+    [SerializeField]
+    private OvrAvatarEntity _localAvatar = null;
+    [SerializeField]
+    private List<OvrAvatarEntity> _loopbackAvatars = null;
+    [SerializeField]
+    private SimulatedLatencySettings _simulatedLatencySettings = new SimulatedLatencySettings();
 
     // Private Variables
     private Dictionary<OvrAvatarEntity, LoopbackState> _loopbackStates =

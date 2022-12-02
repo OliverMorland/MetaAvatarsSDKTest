@@ -1,8 +1,6 @@
 using UnityEngine;
 using System;
 using System.Collections.Generic;
-using System.Collections;
-using System.Linq;
 using UnityEngine.Profiling;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -12,21 +10,73 @@ using UnityEditor;
 
 namespace Oculus.Avatar2
 {
-    public enum AvatarLodZones : int
-    {
-        //TOOCLOSE,
-        INTERACTION,
-        HIGHAWARE,
-        LOWAWARE,
-        BACKGROUND,
-        HINT
-    }
-
+    /**
+     * Configures the Avatar SDK Level of Detail System which aims to keep the
+     * total render and animation time used by all the avatars in a scene under a specified budget.
+     * This system will adjust the geometry displayed for the avatars and how often
+     * they are updated (skinned and tracked) to remain within this budget.
+     *
+     * The LOD manager computations to select the appropriate LOD can be distributed over multiple frames
+     * (cycleProcessingOverFrames) or done all at once. The application can limit the number of LODs
+     * recalculated per frame (LODCountPerFrame) and specify the time duration in which all LODs
+     * should be refreshed (refreshSeconds).
+     *
+     * The number of LODs loaded impacts runtime memory usage. When using Unity Skinning the total size of
+     * Unity Mesh objects for the half manifestation third person mesh is a total of ~9.45MB per avatar.
+     * When using the Avatar GPU skinning solution, the morph target data size for a half manifestation 3rd
+     * third person mesh is ~9.4MB per avatar. These mesh sizes are dominated by the morph targets of the head.
+     * You can select which LODs are loaded for an avatar by setting _creationInfo flags before
+     * before calling [CreateEntity()](@ref OvrAvatarEntity.CreateEntity).
+     * Setting maxLodLevel can force lower levels of detail to be ignored.
+     *
+     * GEOMETRY LOD
+     * The geometric level of detail chosen depends upon the screen percentage occupied by the avatar.
+     * The system uses a logarithmic function to select the LOD:
+     * @code
+     *  LOD = -ln(screenPercentage * dynamicLodWantedLogScale)
+     * @endcode
+     *
+     * The LOD system can cull avatars based on their distance from the camera. This culling is
+     * performed based on the avatar's joint positions. The application can specify a set of
+     * cameras and a list of avatar joints. If all the joints are outside of all the cameras,
+     * the avatar is culled.
+     *
+     * If dynamic processing is enabled, the LOD system will further downgrade LOD levels
+     * to maintain a specified total triangle budget. The application can specify how many
+     * avatars that participate in this adjustment.
+     *
+     * UPDATE LOD
+     * In addition to using different geometry, how often an avatar is updated
+     * (skinned, tracked, animated) is varied based on the importance of the
+     * avatar. The update importance is computed using a logarithmic function based
+     * on the screen percentage occupied by the avatar:
+     * @code
+     *  screenPercentToUpdateImportanceCurveMultiplier * screenPercent ** screenPercentToUpdateImportanceCurvePower
+     * @endcode
+     * The application can also limit the number of avatars which are updated per frame (maxActiveAvatars).
+     *
+     * STREAMING LOD
+     * If enableDynamicStreaming is set, the LOD system can throttle how much tracking data is sent across the network
+     * for each avatar based on its importance. The application can specify the maximum bits per second for
+     * low, medium and high fidelity streaming and establish distances from the camera at which streaming
+     * switches fidelity. Avatars beyond a certain distance send no data.
+     *
+     * LOD EVENTS
+     * OvrAvatarManager invokes several events to signal changes to the system
+     * (these events are also available from each AvatarLOD.)
+     * - CulledChangedEvent         invoked when the cull status of an avatar changes.
+     * - AvatarLODCountChangedEvent invoked when the number of AvatarLODs managed by AvatarLODManager changes.
+     *
+     * The LOD system has debug capabilities which can color each avatar based on
+     * it's LOD (Debug.displayLODColors), or display a label (Debug.displayLODLabels).
+     * @see OvrAvatarEntity.CreateEntity
+     * @see AvatarLOD
+     */
     // This far too problematic in practice, doesn't seem worth it. Uncomment if you need this for development.
     // [ExecuteInEditMode]
     public class AvatarLODManager : OvrSingletonBehaviour<AvatarLODManager>
     {
-        private const int MAX_AVATARS = 500;
+        private const uint MAX_AVATARS = OvrAvatarGpuSkinningController.MaxGpuSkinnedAvatars;
         private const string logScope = "AvatarLODManager";
 
         private static Color[] _lodColorsCache = default;
@@ -60,27 +110,35 @@ namespace Oculus.Avatar2
         [Header("Configuration")]
 
         [Tooltip("Maximum LOD level, 0 based. Lower LODs exhibit higher quality.")]
+        /// Maximum LOD level, 0 based. Lower LODs exhibit higher quality.
         public int MaxLodLevel = 4;
 
         [Header("Performance of the Manager (CPU Overhead)")]
 
-        [Tooltip("Every time the manager reevaluates LODs it will do so for a subset according to this number. Set to 0 if all LODs meed reevaluation every frame.")]
+        [Tooltip("Every time the manager reevaluates LODs it will do so for a subset according to this number. Set to 0 if all LODs need reevaluation every frame.")]
+        /// Number of LODs to re-evaluate per frame. 0 recomputes all avatar LODs every frame.
         public int LODCountPerFrame = 8;
 
         [Tooltip("All LODs will be recalculated at this refresh period. Set to 0 to conduct manager refresh every frame.")]
+        /// Time period during which all LODs should be re-evaluated.
         public float refreshSeconds = 0.0f;
         private float currentRefresh = 0.0f;
 
         [Tooltip("Cycles between the different sub functions of the manager and runs one per frame rather than all at once.")]
+        /// If enabled, LOD computations are distributed across multiple frames.
         public bool cycleProcessingOverFrames = true;
 
         private ContributingCamera currentCamera_ = new ContributingCamera() { affectsCulling = true, affectsLod = true };
 
         public Camera CurrentCamera => currentCamera_.camera;
         [Header("Camera Setup")]
+        [Tooltip("Selects the camera used to calculate LOD distance.")]
         [UnityEngine.Serialization.FormerlySerializedAs("lodCamera")]
-        [SerializeField] private Camera _lodCamera = null;
+        [SerializeField]
+        private Camera _lodCamera = null;
 
+        private bool didWarnMissingCamera = false;
+        /// Returns the camera being used for LOD calculations.
         public Camera ActiveLODCamera
         {
             get
@@ -91,12 +149,19 @@ namespace Oculus.Avatar2
                     if (mainCamera)
                     {
                         _lodCamera = mainCamera;
-                        OvrAvatarLog.LogDebug($"No LOD camera specified. Using `Camera.main`: {_lodCamera.name}", logScope, this);
+                        OvrAvatarLog.LogDebug($"No LOD camera specified. Using `Camera.main`: {_lodCamera.name}"
+                            , logScope, this);
                     }
                     else
                     {
                         _lodCamera = null;
-                        OvrAvatarLog.LogWarning("No LOD camera specified. `Camera.main` is null.", logScope, this);
+                        // Avoid log spam in automated tests, which often have no camera
+                        if (!Application.isBatchMode || !didWarnMissingCamera)
+                        {
+                            didWarnMissingCamera = true;
+                            OvrAvatarLog.LogWarning("No LOD camera specified. `Camera.main` is null."
+                                , logScope, this);
+                        }
                     }
                 }
                 return _lodCamera;
@@ -117,55 +182,80 @@ namespace Oculus.Avatar2
             public readonly Plane[] frustumPlanes = new Plane[6];
         }
 
+        /// Extra cameras for LOD distance calculations and joint based culling.
         [Tooltip("Extra cameras to calculate LOD distance, used for render camera to textures.")]
-        [SerializeField] private List<ContributingCamera> extraCameras = new List<ContributingCamera>();
+        [SerializeField]
+        private List<ContributingCamera> extraCameras = new List<ContributingCamera>();
 
+        /// Avatar bounding box used for culling.
         [Tooltip("Empirically determined avatar bounding box to use for culling purposes.")]
         public Bounds frustumBounds_ = new Bounds(Vector3.zero, new Vector3(0.35f, 1f, 0.35f));
 
         // TODO: Fetch this value from the actual camera
         public float CameraHeight = 1.6f;
 
+        /// Event invoked when an avatar's cull status changes.
         public Action<AvatarLOD, bool> CulledChangedEvent;   // events are also available from each AvatarLOD. Use this event when the avatarLOD is not known by the caller.
 
+        /// Event invoked when the number of avatars being managed by the LOD system changes.
         public Action AvatarLODCountChangedEvent;            // the config is held outside the LOD system. When the number of AvatarLODs managed by AvatarLODManager changes, this events gives the player system a chance to update the config.
+
+        /// Event invoked when LOD system configuration changes.
         public Action<AvatarLODManager> UpdateConfigEvent;   // the config is held outside the LOD system. Everytime the ssytem needs to update, this function must accomodate
 
         private bool prevDisplayAgeLabels_ = false;
         private bool prevDisplayLODLabels_ = false;
         private bool prevDisplayLodColors_ = false;
 
+        /// Describes the exponential function which computes update importance based on screen percentage.
+        /// More important avatars are updated every frame, less important ones are updated less often.
         public float screenPercentToUpdateImportanceCurvePower = 0.25f;
         public float screenPercentToUpdateImportanceCurveMultiplier = 1.5f;
 
         [Header("Joint Based Culling")]
-
+        /// Also cull the parent of an avatar that is culled based on its joint positions.
+        [Tooltip("Disables the parent of an avatar that is culled based on its joint positions.")]
         public bool cullingDisablesParentGameObject = false;
+
+        /// Also cull the children of an avatar that is culled based on its joint positions.
+        [Tooltip("Disables the children of an avatar that is culled based on its joint positions.")]
         public bool cullingDisablesChildrenGameObjects = true;
 
-        [SerializeField] private CAPI.ovrAvatar2JointType _jointTypeToCenterOn = CAPI.ovrAvatar2JointType.Hips;
+        /// Joint used to designate the center of the avatar.
+        [SerializeField]
+        [Tooltip("Avatar joint used to designate the center of the avatar.")]
+        private CAPI.ovrAvatar2JointType _jointTypeToCenterOn = CAPI.ovrAvatar2JointType.Hips;
 
-        [SerializeField] private CAPI.ovrAvatar2JointType[] _jointTypesToCullOn = { CAPI.ovrAvatar2JointType.Head, CAPI.ovrAvatar2JointType.LeftHandWrist, CAPI.ovrAvatar2JointType.RightHandWrist };
+        [SerializeField]
+        /// Joint used for culling the avatar. The avatar will be culled if all of these
+        /// joints are outside all of the contributing cameras.
+        [Tooltip("List of joints to use for culling. If all of these joints are outside the camera, the avatar is culled.")]
+        private CAPI.ovrAvatar2JointType[] _jointTypesToCullOn = { CAPI.ovrAvatar2JointType.Head, CAPI.ovrAvatar2JointType.LeftHandWrist, CAPI.ovrAvatar2JointType.RightHandWrist };
 
+        /// Joint used to designate the center of the avatar.
         public CAPI.ovrAvatar2JointType JointTypeToCenterOn => _jointTypeToCenterOn;
         public IReadOnlyList<CAPI.ovrAvatar2JointType> JointTypesToCullOn => _jointTypesToCullOn;
 
         [Header("Dynamic Performance")]
 
+        /// Modify some of the avatar LODs to keep the total avatar triangle count within budget.
         [Tooltip("With dynamic performance, all LODs in front of the camera will be modulated based on a total sum of vertices.")]
         public bool enableDynamicPerformance = true;
 
+        /// Exponential power of screen percentage to LOD selection function.
         public float dynamicLodWantedLogScale = 1.3f;
         public int numDynamicLods = 2;
         [Tooltip("Number of rendered avatar triangles to target, may be exceeded when all avatars are at lowest quality LOD")]
         public int dynamicLodMaxTrianglesToRender = 90000;
 
-        [Tooltip("Maximum number of avatar animation updates per frame")]
+        [Tooltip("Maximum number of avatar animation updates per frame, this should be at least 1/8 of the expected max avatar count")]
+        [Range(1, (int)OvrAvatarGpuSkinningController.MaxSkinnedAvatarsPerFrame)]
         public int maxActiveAvatars = 5;
         [Tooltip("Number of avatar vertices to skin per frame")]
         public int maxVerticesToSkin = 30000;
 
         [Header("Dynamic Streaming")]
+        [Tooltip("Enables dynamically changing network streaming fidelity (low, medium, high) based on avatar distance from the camera.")]
         public bool enableDynamicStreaming = false;
         public long[] dynamicStreamLodBitsPerSecond = new long[OvrAvatarEntity.StreamLODCount] { 0, 0, 0, 0 };
         public long[] dynamicStreamLodMaxDistance = new long[OvrAvatarEntity.StreamLODCount - 1] { 1, 3, 9 };
@@ -173,52 +263,63 @@ namespace Oculus.Avatar2
 
         protected override void Initialize()
         {
+            // Set up params for native LOD system - valuea are taken from Joe's test case
+            CAPI.ovrAvatar2LOD_SetDistribution(75000, 3.0f);
+
             base.Initialize();
 
             var lods = UnityEngine.Object.FindObjectsOfType<AvatarLOD>();
-            foreach (AvatarLOD lod in lods)
+            foreach (var lod in lods)
             {
                 AddLOD(lod);
             }
         }
 
-        private List<AvatarLOD> inactiveAvatarLods = new List<AvatarLOD>(MAX_AVATARS); // all avatars, declares capacity not size
+        private List<AvatarLOD> inactiveAvatarLods = new List<AvatarLOD>((int)MAX_AVATARS); // all avatars, declares capacity not size
 
-        private List<AvatarLOD> avatarLods = new List<AvatarLOD>(MAX_AVATARS); // only active avatars, declares capacity not size
+        private List<AvatarLOD> avatarLods = new List<AvatarLOD>((int)MAX_AVATARS); // only active avatars, declares capacity not size
 
         private List<AvatarLOD> avatarLodsPerFrame; // this will only be used as a reference to either avatarLods or avatarLodsPerFrameSubList
 
-        private readonly List<AvatarLOD> lodsCulled = new List<AvatarLOD>(MAX_AVATARS); // only active avatars, declares capacity not size
-        private readonly List<AvatarLOD> lodsAppeared = new List<AvatarLOD>(MAX_AVATARS); // only active avatars, declares capacity not size
-        private readonly List<AvatarLOD> lodsVisible = new List<AvatarLOD>(MAX_AVATARS); // only active avatars, declares capacity not size
-        private readonly List<AvatarLOD> lodsToProcess = new List<AvatarLOD>(MAX_AVATARS); // only active avatars, declares capacity not size
+        private readonly List<AvatarLOD> lodsCulled = new List<AvatarLOD>((int)MAX_AVATARS); // only active avatars, declares capacity not size
+        private readonly List<AvatarLOD> lodsAppeared = new List<AvatarLOD>((int)MAX_AVATARS); // only active avatars, declares capacity not size
+        private readonly List<AvatarLOD> lodsVisible = new List<AvatarLOD>((int)MAX_AVATARS); // only active avatars, declares capacity not size
+        private readonly List<AvatarLOD> lodsToProcess = new List<AvatarLOD>((int)MAX_AVATARS); // only active avatars, declares capacity not size
         private int roundRobinLodIndex = 0;
 
-        private List<AvatarLOD> dynamicLodPriorityQueue = new List<AvatarLOD>(MAX_AVATARS); // working buffer for dynamic LOD priority queue
+        private List<AvatarLOD> dynamicLodPriorityQueue = new List<AvatarLOD>((int)MAX_AVATARS); // working buffer for dynamic LOD priority queue
 
+        /// Total number of avatar LODs being managed by the LOD system.
         public int AvatarLODsCount => avatarLods.Count;
 
         [Header("First Person Avatar")]
         public AvatarLOD firstPersonAvatarLod;
+        [Tooltip("Desired LOD for first person avatar")]
         public int firstPersonAvatarLodLevel = 0;
         public float firstPersonUpdateImportance = 10000;
 
         [Header("Debugging")]
 
         [Tooltip("This should reference a Unity prefab with a GUI canvas inside. This GUI is used to render numbers in the world space.")]
-        [SerializeField] internal GameObject avatarLodDebugCanvas = null;
+        [SerializeField]
+        internal GameObject avatarLodDebugCanvas = null;
 
         [System.Serializable]
         public class Debug
         {
+            [Tooltip("Use the Unity Editor Scene view camera for LOD debug display. Only works within the Unity Editor.")]
             public bool sceneViewCamera = true;
+            [Tooltip("Display a label next to the avatar with the LOD number.")]
             public bool displayLODLabels = false;
             public bool displayAgeLabels = false;
+            [Tooltip("Color the avatar based on it's LOD.")]
             public bool displayLODColors = false;
+            [Tooltip("Offset of the LOD label relative to the avatar.")]
             public Vector3 displayLODLabelOffset = new Vector3(0.3f, 0.0f, 0.3f);
         }
 
-        [SerializeField] public AvatarLODManager.Debug debug = new AvatarLODManager.Debug();
+        [SerializeField]
+        public AvatarLODManager.Debug debug = new AvatarLODManager.Debug();
 
         // Since all 3 of these fields are public, this function only remains for backwards compatibility.
         public void SetConfig(float refreshSec, int LODsPerFrame, int firstPersonLodLevel)
@@ -228,6 +329,18 @@ namespace Oculus.Avatar2
             firstPersonAvatarLodLevel = firstPersonLodLevel;
         }
 
+        ///
+        /// Add an extra camera for LOD computations.
+        /// The camera can be used for joint based culling, distance
+        /// calculations or both. The screen percentage of an avatar
+        /// is the maximum percentage among all the cameras.
+        /// An avatar is culling when none of its joints are visible
+        /// in any of the cameras.
+        /// @param camera   camera to add.
+        /// @param affectsLod   If true, this camera will be used in LOD distance calculations.
+        /// @param affectsCulling If true, this camera will be used for joint-based culling.
+        /// @see RemoveExtraCamera
+        ///
         public void AddExtraCamera(Camera camera, bool affectsLod = false, bool affectsCulling = true)
         {
             if (camera && extraCameras.Find(x => x.camera == camera) == null)
@@ -236,6 +349,13 @@ namespace Oculus.Avatar2
             }
         }
 
+        ///
+        /// Removes an extra camera previously added.
+        /// The camera can will no longer be used for joint based culling
+        /// or LOD distance calculations. You cannot remove the active LOD camera.
+        /// @param camera   camera to remove.
+        /// @see AddExtraCamera
+        ///
         public void RemoveExtraCamera(Camera camera)
         {
             if (camera)
@@ -259,7 +379,7 @@ namespace Oculus.Avatar2
 
             if (AvatarIsInactiveByParentHierarchy(lod))
             {
-                if (inactiveAvatarLods.Find(x => x == lod) == null)
+                if (!inactiveAvatarLods.Contains(lod))
                 {
                     inactiveAvatarLods.Add(lod);
                     AvatarLODCountChangedEvent?.Invoke();
@@ -267,7 +387,7 @@ namespace Oculus.Avatar2
             }
             else
             {
-                if (avatarLods.Find(x => x == lod) == null)
+                if (!avatarLods.Contains(lod))
                 {
                     avatarLods.Add(lod);
                     lodsCulled.Add(lod);
@@ -349,7 +469,7 @@ namespace Oculus.Avatar2
                 if (cycleProcessingOverFrames)
                 {
                     cyclingFunction_++;
-                    if(cyclingFunction_ >= LodManagerFunction.MAX)
+                    if (cyclingFunction_ >= LodManagerFunction.MAX)
                     {
                         cyclingFunction_ = LodManagerFunction.FIRST;
                     }
@@ -453,36 +573,52 @@ namespace Oculus.Avatar2
             {
                 foreach (var avatarLod in avatarLodsPerFrame)
                 {
-                    avatarLod.distance = (Vector3.Distance(currentCamera_.position, avatarLod.centerXform.position));
+                    var avatarEntity = avatarLod.Entity;
+                    System.Diagnostics.Debug.Assert(avatarEntity != null);
+                    System.Diagnostics.Debug.Assert(avatarEntity.isActiveAndEnabled);
 
-                    float realHeight = CameraHeight * avatarLod.transform.lossyScale.x;
-                    float screenPercent = GetScreenPercent(realHeight, avatarLod.distance, currentCamera_.fieldOfView);
-
-                    foreach (ContributingCamera cc in extraCameras)
+                    bool isFirstPersonAvatarLod = ReferenceEquals(avatarLod, firstPersonAvatarLod);
+                    if (isFirstPersonAvatarLod)
                     {
-                        if (cc.camera != currentCamera_.camera && cc.affectsLod)
-                        {
-                            float extraCameraDist = (Vector3.Distance(cc.position, avatarLod.centerXform.position));
-                            float extraCameraScreenPercent = GetScreenPercent(realHeight, extraCameraDist, cc.fieldOfView);
+                        avatarLod.distance = 0.0f;
+                        avatarLod.screenPercent = 1.0f;
+                        avatarLod.updateImportance = firstPersonUpdateImportance;
+                    }
+                    else
+                    {
+                        avatarLod.distance = (Vector3.Distance(currentCamera_.position, avatarLod.centerXform.position));
 
-                            if (extraCameraScreenPercent > screenPercent)
+                        float realHeight = CameraHeight * avatarLod.transform.lossyScale.x;
+                        float screenPercent = GetScreenPercent(realHeight, avatarLod.distance, currentCamera_.fieldOfView);
+
+                        foreach (ContributingCamera cc in extraCameras)
+                        {
+                            if (cc.camera != currentCamera_.camera && cc.affectsLod)
                             {
-                                screenPercent = extraCameraScreenPercent;
+                                float extraCameraDist = (Vector3.Distance(cc.position, avatarLod.centerXform.position));
+                                float extraCameraScreenPercent = GetScreenPercent(realHeight, extraCameraDist, cc.fieldOfView);
+
+                                if (extraCameraScreenPercent > screenPercent)
+                                {
+                                    screenPercent = extraCameraScreenPercent;
+                                }
                             }
                         }
+
+                        avatarLod.screenPercent = screenPercent;
+
+                        // convert screenPercent to animation importance scale using:
+                        //  importance = screenPercent ^ CurvePower * CurveMultiplier
+                        avatarLod.updateImportance = Mathf.Pow(screenPercent, screenPercentToUpdateImportanceCurvePower) *
+                                                     screenPercentToUpdateImportanceCurveMultiplier;
                     }
 
-                    avatarLod.screenPercent = screenPercent;
-
-                    // convert screenPercent to animation importance scale using:
-                    //  importance = screenPercent ^ CurvePower * CurveMultiplier
-                    avatarLod.updateImportance = Mathf.Pow(screenPercent, screenPercentToUpdateImportanceCurvePower) *
-                                                 screenPercentToUpdateImportanceCurveMultiplier;
-
-                    var avatarEntity = avatarLod.GetComponentInParent<OvrAvatarEntity>();
-                    avatarEntity.UpdateAvatarLODOverride();
-                    avatarEntity.SendImportanceAndCost();
-                    avatarEntity.TrackUpdateAge();
+                    if (avatarEntity != null)
+                    {
+                        avatarEntity.UpdateAvatarLODOverride();
+                        avatarEntity.SendImportanceAndCost();
+                        avatarEntity.TrackUpdateAge();
+                    }
                 }
             }
             else
@@ -493,7 +629,7 @@ namespace Oculus.Avatar2
                     avatarLod.screenPercent = 0;
                     avatarLod.updateImportance = 0;
 
-                    var avatarEntity = avatarLod.GetComponentInParent<OvrAvatarEntity>();
+                    var avatarEntity = avatarLod.Entity;
                     avatarEntity.UpdateAvatarLODOverride();
                     avatarEntity.SendImportanceAndCost();
                     avatarEntity.TrackUpdateAge();
@@ -530,7 +666,7 @@ namespace Oculus.Avatar2
             if (debug.displayAgeLabels || debug.displayAgeLabels != prevDisplayAgeLabels_)
             {
                 foreach (var avatarLod in avatarLods)
-        {
+                {
                     avatarLod.UpdateDebugLabel();
                 }
 
@@ -544,14 +680,14 @@ namespace Oculus.Avatar2
         {
             Profiler.BeginSample("AvatarLODManager::CullAndCreateProcessListForFrame");
 
+            avatarLodsPerFrame = lodsToProcess;
             if (LODCountPerFrame <= 0)
             {
-                avatarLodsPerFrame = lodsToProcess;
-
                 lodsToProcess.Clear();
                 foreach (var avatarLod in avatarLods)
                 {
-                    bool avatarCulled = CullAvatar(avatarLod);
+                    // "Cull" inactive entities
+                    bool avatarCulled = !avatarLod.EntityActive || CullAvatar(avatarLod);
                     if (avatarCulled)
                     {
                         if (cullingDisablesChildrenGameObjects)
@@ -564,22 +700,23 @@ namespace Oculus.Avatar2
                         lodsToProcess.Add(avatarLod);
                     }
                 }
-        }
+            }
             else
             {
-                avatarLodsPerFrame = lodsToProcess;
-
                 // Each frame that passes we need to fill up lodsToProcess from scratch
                 int processCountPerFrame = Math.Min(LODCountPerFrame, avatarLods.Count);
                 lodsToProcess.Clear();
                 lodsAppeared.Clear();
 
                 // first fill up lodsToProcess with anything newly appeared
-                for(int i = lodsCulled.Count-1; i>=0; i--)
+                for (int i = lodsCulled.Count - 1; i >= 0; i--)
                 {
                     var avatarLod = lodsCulled[i];
+
+                    // Skip inactive entities
+                    if (!avatarLod.EntityActive) { continue; }
+
                     bool lodCulled = CullAvatar(avatarLod);
-                    // if (cullingDisablesChildrenGameObjects)
                     if (!lodCulled) // if it became visible
                     {
                         lodsCulled.Remove(avatarLod);
@@ -599,10 +736,11 @@ namespace Oculus.Avatar2
                 while (processCountPerFrame > 0 && lodsVisibleToConsume > 0)
                 {
                     var avatarLod = lodsVisible[roundRobinLodIndex % lodsVisible.Count];
-                    bool lodCulled = CullAvatar(avatarLod);
+
+                    // "Cull" inactive entities
+                    bool lodCulled = !avatarLod.EntityActive || CullAvatar(avatarLod);
                     if (lodCulled)
                     {
-                        // if (cullingDisablesChildrenGameObjects)
                         avatarLod.Level = -1;
                         lodsVisible.Remove(avatarLod);
                         lodsCulled.Add(avatarLod);
@@ -634,7 +772,7 @@ namespace Oculus.Avatar2
                     }
                 }
 
-                // Now decide if the round robin index will be set before of after those just appeared
+                // Now decide if the round robin index will be set before or after those just appeared
                 roundRobinLodIndex += lodsAppeared.Count;
             }
 
@@ -701,6 +839,8 @@ namespace Oculus.Avatar2
 
                 avatarLod.wantedLevel = Mathf.Clamp(Mathf.RoundToInt(lodFactor), avatarLod.minLodLevel, avatarLod.maxLodLevel);
                 avatarLod.dynamicLevel = avatarLod.CalcAdjustedLod(avatarLod.wantedLevel + numDynamicLods);
+
+                // TODO: This seems, erroneous?
                 if (avatarLod.dynamicLevel == -1)
                 {
                     avatarLod.Level = -1;
@@ -728,20 +868,27 @@ namespace Oculus.Avatar2
                 for (int i = 0; i < dynamicLodPriorityQueue.Count; i++)
                 {
                     var avatarLod = dynamicLodPriorityQueue[i];
-                    if (avatarLod is null)
-                    {
-                        continue;
-                    }
+                    // If the `avatarLod` is null, it has reached its maximum LOD fidelity
+                    if (avatarLod is null) { continue; }
 
+                    // Get next higher fidelity LOD available for this avatar
                     var prevLod = avatarLod.GetPreviousLod(avatarLod.dynamicLevel);
-                    if (prevLod != -1 && prevLod >= (avatarLod.wantedLevel - numDynamicLods))
+                    // If there is a higher fidelity LOD (!= -1) and it is above the wantedLevel
+                    // TODO: Consider going 1 "step" over wantedLevel?
+                    if (prevLod != -1 && prevLod >= avatarLod.wantedLevel)
                     {
                         var nextLevelTriIncrease = avatarLod.triangleCounts[prevLod] - avatarLod.triangleCounts[avatarLod.dynamicLevel];
-                        if (trianglesToRender + nextLevelTriIncrease <= dynamicLodMaxTrianglesToRender)
+                        var triCostWithIncrease = trianglesToRender + nextLevelTriIncrease;
+
+                        // If tri increase fits within our budget
+                        if (triCostWithIncrease <= dynamicLodMaxTrianglesToRender)
                         {
-                            trianglesToRender += nextLevelTriIncrease;
+                            // Lock in this LOD upgrade via `dynamicLevel`
+                            trianglesToRender = triCostWithIncrease;
                             avatarLod.dynamicLevel = prevLod;
-                            continue;
+
+                            // If dynamicLevel is still lower fidelity than wantedLevel - wait for more tris
+                            if (avatarLod.dynamicLevel > avatarLod.wantedLevel) { continue; }
                         }
                     }
 
@@ -750,11 +897,10 @@ namespace Oculus.Avatar2
                     dynamicLodPriorityQueue[i] = null;
                 }
 
-                if (lastTrisToRender == trianglesToRender)
-                {
-                    break;
-                }
+                // When there are no additional LOD fidelity upgrades available, stop searching
+                if (lastTrisToRender == trianglesToRender) { break; }
 
+                // Mark starting point for next sweep
                 lastTrisToRender = trianglesToRender;
             }
 
@@ -780,7 +926,7 @@ namespace Oculus.Avatar2
             long bandwidthRequired = 0;
             foreach (var avatarLod in avatarLods)
             {
-                var avatar = avatarLod.GetComponentInParent<OvrAvatarEntity>();
+                var avatar = avatarLod.Entity;
                 if (avatar.IsLocal)
                 {
                     avatarLod.dynamicStreamLod = OvrAvatarEntity.StreamLOD.Full;
@@ -829,7 +975,7 @@ namespace Oculus.Avatar2
             for (int i = 0; i < dynamicLodPriorityQueue.Count; i++)
             {
                 var avatarLod = dynamicLodPriorityQueue[i];
-                var avatar = avatarLod.GetComponentInParent<OvrAvatarEntity>();
+                var avatar = avatarLod.Entity;
                 avatar.ForceStreamLod(avatarLod.dynamicStreamLod);
             }
 

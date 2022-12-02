@@ -4,8 +4,7 @@
     "references": [
         "Oculus.AvatarSDK2",
         "Oculus.Platform",
-        "Oculus.VR",
-        "MicrophoneDebugging"
+        "Oculus.VR"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -14,6 +13,17 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.xr.management",
+            "expression": "",
+            "define": "USING_XR_MANAGEMENT"
+        },
+        {
+            "name": "com.unity.xr.oculus",
+            "expression": "",
+            "define": "USING_XR_SDK_OCULUS"
+        }
+    ],
     "noEngineReferences": false
 }

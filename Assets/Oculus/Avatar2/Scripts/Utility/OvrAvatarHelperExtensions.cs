@@ -21,6 +21,9 @@ namespace Oculus.Avatar2
         }
 
         #region Containers
+
+        // HashSet<T> Extensions
+
         public static T[] NullSafeToArray<T>(this HashSet<T> set)
         {
             return set != null ? set.ToArray() : Array.Empty<T>();
@@ -33,18 +36,23 @@ namespace Oculus.Avatar2
             return copyArray;
         }
 
+        // Unity.NativeArray<T> Extensions
+
         public static UInt32 GetBufferSize<T>(in this NativeArray<T> array) where T : struct
         {
-            return array.GetBufferSize(Marshal.SizeOf<T>());
+            return array.GetBufferSize(UnsafeUtility.SizeOf<T>());
         }
-
-        public static UInt32 GetBufferSize<T>(in this NativeArray<T> array, int elementSize) where T : struct
+        public static UInt32 GetBufferSize<T>(in this NativeArray<T> array, UInt32 elementSize) where T : struct
         {
             Debug.Assert(elementSize != 0);
-            Debug.Assert(elementSize == Marshal.SizeOf<T>());
+            Debug.Assert(elementSize == UnsafeUtility.SizeOf<T>());
             return (UInt32)(array.Length * elementSize);
         }
-
+        public static UInt32 GetBufferSize<T>(in this NativeArray<T> array, int elementSize) where T : struct
+        {
+            Debug.Assert(elementSize > 0);
+            return array.GetBufferSize((UInt32)elementSize);
+        }
         public static UInt32 GetBufferSize(in this NativeArray<byte> array)
         {
             return (UInt32)array.Length;
@@ -85,6 +93,19 @@ namespace Oculus.Avatar2
         public static unsafe T* GetPtr<T>(in this NativeArray<T> array) where T : unmanaged
         {
             return (T*)array.GetUnsafePtr();
+        }
+
+        public static unsafe CastT* CastPtr<T, CastT>(in this NativeArray<T> array)
+            where T : unmanaged
+            where CastT : unmanaged
+        {
+            Debug.Assert(UnsafeUtility.SizeOf<CastT>() == UnsafeUtility.SizeOf<T>());
+            return (CastT*)array.GetUnsafePtr();
+        }
+
+        public static unsafe CAPI.ovrAvatar2Vector3f* CastOvrPtr(in this NativeArray<Vector3> array)
+        {
+            return array.CastPtr<Vector3, CAPI.ovrAvatar2Vector3f>();
         }
 
         public static unsafe T* GetReadonlyPtr<T>(in this NativeArray<T> array) where T : unmanaged
@@ -138,6 +159,24 @@ namespace Oculus.Avatar2
             return new NativeArrayDisposeWrapper<T>(in array);
         }
 
+        // NativeSlice<T> Extensions
+
+        public static unsafe T* GetPtr<T>(in this NativeSlice<T> slice) where T : unmanaged
+        {
+            return (T*)slice.GetUnsafePtr();
+        }
+
+        public static UInt32 GetBufferSize<T>(in this NativeSlice<T> slice) where T : struct
+        {
+            unchecked { return (UInt32)slice.Length * (UInt32)UnsafeUtility.SizeOf<T>(); }
+        }
+        public static UInt32 GetBufferSize(in this NativeSlice<byte> array)
+        {
+            return (UInt32)array.Length;
+        }
+
+        // Dictionary<K, V> Extensions
+
         public static Dictionary<K, V> Copy<K, V>(this Dictionary<K, V> dict)
         {
             return new Dictionary<K, V>(dict);
@@ -161,11 +200,115 @@ namespace Oculus.Avatar2
             }
         }
 
-        public static bool Contains<T>(this T[] array, in T value)
+        // T[] Extensions
+
+        /* Concatenate newElement onto the target array, returning the new array -
+         *  Previous array target should be considered invalid */
+        public static T[] Concat<T>(this T[] array, in T newElement)
         {
-            return Array.IndexOf(array, value) >= 0;
+            var startLen = array.Length;
+            Array.Resize(ref array, startLen + 1);
+            array[startLen] = newElement;
+            return array;
         }
 
+        /* Remove `elementToRemove` from the target array and return the resulting array, preserving order
+         *  Shifts all elements after the removed index
+         *  O(n) [find index] + O(n) [shift elements]
+         *  Previous array instance should be considered invalid */
+        public static T[] SliceOut<T>(this T[] array, in T elementToRemove)
+        {
+            int idx = array.IndexOf(in elementToRemove);
+            if (idx >= 0)
+            {
+                array = array.SliceOutIndex(idx);
+            }
+            return array;
+        }
+
+        /* Remove `elementToRemove` from the target array and return the resulting array, preserving order
+         *  Shifts all elements after the removed index
+         *  O(n) [find index] + O(n) [shift elements]
+         *  Previous array instance should be considered invalid */
+        public static T[] SliceOutIndex<T>(this T[] array, int indexToRemove)
+        {
+            var newLength = array.Length - 1;
+            while (indexToRemove < newLength)
+            {
+                array[indexToRemove] = array[++indexToRemove];
+            }
+            Array.Resize(ref array, newLength);
+            return array;
+        }
+
+        /* Remove `elementToRemove` from the target array and return the resulting array, changes order
+         *  Swaps the removed index with the last element in the array, then resizes
+         *  O(n) [find index] + O(1) [swap elements]
+         *  Previous array instance should be considered invalid */
+        public static T[] SwapOut<T>(this T[] array, in T elementToRemove)
+        {
+            int idx = array.IndexOf(in elementToRemove);
+            if (idx >= 0)
+            {
+                array = array.SwapOutIndex(idx);
+            }
+            return array;
+        }
+
+        /* Remove `indexToRemove` from the target array and return the resulting array, changes order
+         *  Swaps the removed index with the last element in the array, then resizes
+         *  O(n) [find index] + O(1) [swap elements]
+         *  Previous array instance should be considered invalid */
+        public static T[] SwapOutIndex<T>(this T[] array, int indexToRemove)
+        {
+            var newLength = array.Length - 1;
+            array[indexToRemove] = array[newLength];
+            Array.Resize(ref array, newLength);
+            return array;
+        }
+
+        /* Returns the index of `value` in `array`, or -1 if `value` was not found
+         *  O(n) */
+        public static int IndexOf<T>(this T[] array, in T value)
+        {
+            return Array.IndexOf(array, value);
+        }
+
+        /* Returns the index of `value` in `array` if found; otherwise, a negative number.
+         * - If value is not found and value is less than one or more elements in array,
+         *   the negative number returned is the bitwise complement of the index of the first element that is larger than value.
+         * - If value is not found and value is greater than all elements in array,
+         *   the negative number returned is the bitwise complement of (the index of the last element plus 1).
+         * - If this method is called with a non-sorted array,
+         *   the return value can be incorrect and a negative number could be returned, even if value is present in array.
+         * Array must be sorted in increasing order via T's IComparable implementation
+         *  O(logn) - performs a binary search */
+        public static int BinarySearch<T>(this T[] array, in T value)
+        {
+            return Array.BinarySearch(array, value);
+        }
+
+        /* Returns the index of `value` in `array`, if found; otherwise, a negative number.
+         * - If value is not found and value is less than one or more elements in array,
+         *   the negative number returned is the bitwise complement of the index of the first element that is larger than value.
+         * - If value is not found and value is greater than all elements in array,
+         *   the negative number returned is the bitwise complement of (the index of the last element plus 1).
+         * - If this method is called with a non-sorted array,
+         *   the return value can be incorrect and a negative number could be returned, even if value is present in array.
+         * Array must be sorted in increasing order per `comparer`
+         *  O(logn) - performs a binary search using `comparer` */
+        public static int BinarySearch<T>(this T[] array, in T value, IComparer<T> comparer)
+        {
+            return Array.BinarySearch(array, value, comparer);
+        }
+        // TODO: BinarySearch backed variant of Contains?
+
+        /* Returns `true` if `value` in `array`, `false` otherwise
+         *  O(n) */
+        public static bool Contains<T>(this T[] array, in T value)
+        {
+            return array.IndexOf(in value) >= 0;
+        }
 
         public static bool Contains<T>(this IReadOnlyList<T> list, in T value, int searchLength) where T : class
         {
@@ -186,6 +329,8 @@ namespace Oculus.Avatar2
             // Yay .NET https://docs.microsoft.com/en-us/dotnet/api/system.array.indexof?view=netcore-3.1
             return array.GetLowerBound(0) <= index && index < Int32.MaxValue;
         }
+
+        // List<T> Extensions
 
         // Helpers for swapping List in to replace LinkedList (which makes lots of GC.Allocs)
         public static T? First<T>(this List<T> list) where T : struct
@@ -256,6 +401,32 @@ namespace Oculus.Avatar2
             return wasSuccessOrWarn;
         }
 
+        internal static bool EnsureSuccessOrWarning(this CAPI.ovrAvatar2Result result
+            , CAPI.ovrAvatar2Result succeedWithWarningResult0
+            , CAPI.ovrAvatar2Result succeedWithWarningResult1
+            , string warningSuggestion = DefaultWarningSuggestion
+            , string msgContext = DefaultContext
+            , string logScope = DefaultScope
+            , UnityEngine.Object unityContext = null)
+        {
+            bool wasSuccessOrWarn = result.IsSuccess();
+            if (!wasSuccessOrWarn)
+            {
+                wasSuccessOrWarn = result == succeedWithWarningResult0 || result == succeedWithWarningResult1;
+                if (wasSuccessOrWarn)
+                {
+                    OvrAvatarLog.LogWarning(
+                        $"Operation ({msgContext}) succeeded with warning ({result})\n - {warningSuggestion} to resolve this warning"
+                        , logScope, unityContext);
+                }
+                else
+                {
+                    result.LogError(msgContext, logScope, unityContext);
+                }
+            }
+            return wasSuccessOrWarn;
+        }
+
         private const string DefaultLogVerboseContext = "no action required";
         // TODO: System.Diagnostic.Conditional
         internal static bool EnsureSuccessOrLogVerbose(this CAPI.ovrAvatar2Result result
@@ -266,6 +437,19 @@ namespace Oculus.Avatar2
             , UnityEngine.Object unityContext = null)
         {
             return EnsureSuccessOrLog(result, succeedWithLogVerboseResult,
+                logDebugContext, msgContext, logScope, unityContext,
+                OvrAvatarLog.ELogLevel.Verbose);
+        }
+        internal static bool EnsureSuccessOrLogVerbose(this CAPI.ovrAvatar2Result result
+            , CAPI.ovrAvatar2Result succeedWithLogVerboseResult0
+            , CAPI.ovrAvatar2Result succeedWithLogVerboseResult1
+            , string logDebugContext = DefaultLogVerboseContext
+            , string msgContext = DefaultContext
+            , string logScope = DefaultScope
+            , UnityEngine.Object unityContext = null)
+        {
+            return EnsureSuccessOrLog(
+                result, succeedWithLogVerboseResult0, succeedWithLogVerboseResult1,
                 logDebugContext, msgContext, logScope, unityContext,
                 OvrAvatarLog.ELogLevel.Verbose);
         }
@@ -339,6 +523,33 @@ namespace Oculus.Avatar2
             if (!wasSuccessOrLog)
             {
                 wasSuccessOrLog = result == succeedWithLogResult;
+                if (wasSuccessOrLog)
+                {
+                    OvrAvatarLog.Log(logLevel
+                        , $"Operation ({msgContext}) succeeded with log ({result})\n - {logDebugContext}"
+                        , logScope, unityContext);
+                }
+                else
+                {
+                    result.LogError(msgContext, logScope, unityContext);
+                }
+            }
+            return wasSuccessOrLog;
+        }
+
+        private static bool EnsureSuccessOrLog(this CAPI.ovrAvatar2Result result
+            , CAPI.ovrAvatar2Result succeedWithLogResult0
+            , CAPI.ovrAvatar2Result succeedWithLogResult1
+            , string logDebugContext
+            , string msgContext
+            , string logScope
+            , UnityEngine.Object unityContext
+            , OvrAvatarLog.ELogLevel logLevel)
+        {
+            bool wasSuccessOrLog = result.IsSuccess();
+            if (!wasSuccessOrLog)
+            {
+                wasSuccessOrLog = result == succeedWithLogResult0 || result == succeedWithLogResult1;
                 if (wasSuccessOrLog)
                 {
                     OvrAvatarLog.Log(logLevel

@@ -7,9 +7,30 @@ using UnityEngine;
 namespace Oculus.Avatar2
 {
     /**
-     * Collects the body tracking skeleton and its reference pose
-     * and onverts to and from C# and C++ native versions.
+     * Describes a contiguous array of structures.
+     * Used to transfer data between C# and native.
+     */
+    public ref struct OvrSpan<T> where T : struct
+    {
+        private readonly IntPtr _ptr;
+        private readonly int _length;
+
+        public IntPtr Address => _ptr;
+        public int Length => _length;
+
+        public unsafe OvrSpan(void* ptr, int length)
+        {
+            _ptr = new IntPtr(ptr);
+            _length = length;
+        }
+    }
+
+    /**
+     * The purpose of this struct is to wrap CAPI.ovrAvatar2TrackingBodySkeleton,
+     * so that application code can write skeleton and reference pose data into
+     * a native ovrAvatar2TrackingBodySkeleton struct owned by the avatar SDK.
      * @see OvrAvatarBodyTrackingContextBase
+     * @see CAPI.ovrAvatar2TrackingBodySkeleton
      */
     public ref struct OvrAvatarTrackingSkeleton
     {
@@ -24,8 +45,49 @@ namespace Oculus.Avatar2
         /// in if no external transformations are applied.
         public OvrAvatarTrackingPose referencePose;
 
-        /// Handle to native skeleton bone data.
-        private readonly IntPtr _bonesPtr;
+        /**
+         * Set bone by index
+         * @param newBone   new bone
+         * @param index     where to copy
+         * @returns true if index is valid, false otherwise
+         */
+        public bool SetBone(CAPI.ovrAvatar2Bone newBone, int index)
+        {
+            if (index < 0 || index >= bones.Length)
+            {
+                return false;
+            }
+            unsafe
+            {
+                CAPI.ovrAvatar2Bone* ptr = (CAPI.ovrAvatar2Bone*)bones.Address.ToPointer();
+                *(ptr + index) = newBone;
+            }
+            return true;
+        }
+
+        /**
+         * Set multiple bones
+         * @param newBones      new bone array
+         * @param offset        offset index to start copy
+         * @param count         number of bones to copy
+         * @returns true if copy succeed, false otherwise
+         */
+        public bool SetBones(CAPI.ovrAvatar2Bone[] newBones, int offset, int count)
+        {
+            if (offset < 0 || count <= 0 || (offset + count) > newBones.Length)
+            {
+                return false;
+            }
+            unsafe
+            {
+                CAPI.ovrAvatar2Bone* ptr = (CAPI.ovrAvatar2Bone*)bones.Address.ToPointer();
+                for (int i = offset; i < offset + count; ++i)
+                {
+                    *(ptr + i) = newBones[i];
+                }
+            }
+            return true;
+        }
 
         /**
          * Constructs a C# skeleton from a native skeleton.
@@ -39,7 +101,6 @@ namespace Oculus.Avatar2
             unsafe
             {
                 bones = new OvrSpan<CAPI.ovrAvatar2Bone>(skeleton.bones, (int)skeleton.numBones);
-                _bonesPtr = new IntPtr(skeleton.bones);
             }
         }
 
@@ -55,7 +116,8 @@ namespace Oculus.Avatar2
             unsafe
             {
                 Debug.Assert(bones.Length == native.numBones);
-                Debug.Assert(_bonesPtr.ToPointer() == native.bones);
+                CAPI.ovrAvatar2Bone* ptr = (CAPI.ovrAvatar2Bone*)bones.Address.ToPointer();
+                Debug.Assert(ptr == native.bones);
             }
             native.forwardDir = forwardDir;
             referencePose.CopyToNative(ref native.referencePose);
@@ -72,9 +134,8 @@ namespace Oculus.Avatar2
         {
             unsafe
             {
-                return new CAPI.ovrAvatar2TrackingBodySkeleton((CAPI.ovrAvatar2Bone*)_bonesPtr.ToPointer(),
-                    (UInt32)bones.Length,
-                    referencePose.GetNative())
+                CAPI.ovrAvatar2Bone* ptr = (CAPI.ovrAvatar2Bone*)bones.Address.ToPointer();
+                return new CAPI.ovrAvatar2TrackingBodySkeleton(ptr, (UInt32)bones.Length, referencePose.GetNative())
                 {
                     forwardDir = forwardDir
                 };
@@ -93,7 +154,8 @@ namespace Oculus.Avatar2
             unsafe
             {
                 Debug.Assert(bones.Length == native.numBones);
-                Debug.Assert(_bonesPtr.ToPointer() == native.bones);
+                CAPI.ovrAvatar2Bone* ptr = (CAPI.ovrAvatar2Bone*)bones.Address.ToPointer();
+                Debug.Assert(ptr == native.bones);
             }
             forwardDir = native.forwardDir;
             referencePose.CopyFromNative(ref native.referencePose);

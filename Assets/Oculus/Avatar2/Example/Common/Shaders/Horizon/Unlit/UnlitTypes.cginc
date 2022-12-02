@@ -10,6 +10,7 @@ struct appdata {
   float3 normal : NORMAL;
   float4 uv : TEXCOORD0;
   fixed4 color : COLOR;
+  float4 ormt : TEXCOORD1;
   UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -22,6 +23,7 @@ struct v2f {
   float4 effectsMapUV : TEXCOORD2;
   float3 worldNormal : TEXCOORD3;
   float3 worldPos : TEXCOORD4;
+  float4 ormt : TEXCOORD5;
   UNITY_VERTEX_INPUT_INSTANCE_ID
   UNITY_VERTEX_OUTPUT_STEREO
 };

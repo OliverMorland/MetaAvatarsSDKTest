@@ -14,59 +14,63 @@ namespace Oculus.Platform
       Handle = CAPI.ovr_RichPresenceOptions_Create();
     }
 
-    /// This the unique API Name that refers to an in-app destination
+    /// DEPRECATED. Use GroupPresenceOptions.SetDestinationApiName()
+    [Obsolete("Deprecated")]
     public void SetApiName(string value) {
       CAPI.ovr_RichPresenceOptions_SetApiName(Handle, value);
     }
 
-    /// The current amount of users that have joined this user's
-    /// squad/team/game/match etc.
+    /// DEPRECATED. Unused. Will be removed from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetCurrentCapacity(uint value) {
       CAPI.ovr_RichPresenceOptions_SetCurrentCapacity(Handle, value);
     }
 
-    /// Optionally passed in to use a different deeplink message than the one
-    /// defined in the api_name
+    /// DEPRECATED. Use GroupPresenceOptions.SetDeeplinkMessageOverride()
+    [Obsolete("Deprecated")]
     public void SetDeeplinkMessageOverride(string value) {
       CAPI.ovr_RichPresenceOptions_SetDeeplinkMessageOverride(Handle, value);
     }
 
-    /// The time the current match/game/round etc. ends
+    /// DEPRECATED. Unused. Will be removed from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetEndTime(DateTime value) {
       CAPI.ovr_RichPresenceOptions_SetEndTime(Handle, value);
     }
 
+    /// DEPRECATED. Unused. Will be removed from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetExtraContext(RichPresenceExtraContext value) {
       CAPI.ovr_RichPresenceOptions_SetExtraContext(Handle, value);
     }
 
-    /// Users reported with the same instance ID will be considered to be together
-    /// and could interact with each other. Renamed to
-    /// RichPresenceOptions.SetInstanceId()
+    /// DEPRECATED. Use GroupPresenceOptions.SetMatchSessionId() Will be removed
+    /// from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetInstanceId(string value) {
       CAPI.ovr_RichPresenceOptions_SetInstanceId(Handle, value);
     }
 
-    /// Set whether or not the person is shown as active or idle
+    /// DEPRECATED. Unused. Will be removed from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetIsIdle(bool value) {
       CAPI.ovr_RichPresenceOptions_SetIsIdle(Handle, value);
     }
 
-    /// Set whether or not the person is shown as joinable or not to others. A user
-    /// that is joinable can invite others to join them. Set this to false if other
-    /// users would not be able to join this user. For example: the current session
-    /// is full, or only the host can invite others and the current user is not the
-    /// host.
+    /// DEPRECATED. Use GroupPresenceOptions.SetIsJoinable()
+    [Obsolete("Deprecated")]
     public void SetIsJoinable(bool value) {
       CAPI.ovr_RichPresenceOptions_SetIsJoinable(Handle, value);
     }
 
-    /// The maximum that can join this user
+    /// DEPRECATED. Unused. Will be removed from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetMaxCapacity(uint value) {
       CAPI.ovr_RichPresenceOptions_SetMaxCapacity(Handle, value);
     }
 
-    /// The time the current match/game/round etc. started
+    /// DEPRECATED. Unused. Will be removed from headers at version v49.
+    [Obsolete("Deprecated")]
     public void SetStartTime(DateTime value) {
       CAPI.ovr_RichPresenceOptions_SetStartTime(Handle, value);
     }

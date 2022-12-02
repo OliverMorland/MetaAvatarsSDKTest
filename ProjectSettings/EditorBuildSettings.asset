@@ -5,10 +5,13 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/SampleEntityWithMirror.unity
+    guid: e70eb5eaceb2ad04d8adabffc964dd61
   - enabled: 0
     path: Assets/Oculus/Avatar2/Example/Scenes/MirrorScene/MirrorScene.unity
     guid: 9f2e1693a4f24bc498477b3dfeb166aa
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/MetaAvatarsFromScratch.unity
     guid: 027527bab48fdc2418c01829769e4cf4
   - enabled: 0

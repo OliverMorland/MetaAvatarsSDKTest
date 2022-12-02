@@ -115,6 +115,7 @@ OvrVertexData AvatarShaderVertTransform(appdata v, inout v2f o) {
   o.pos = UnityObjectToClipPos(objPos);
   o.color = v.color;
   o.uv = v.uv;
+  o.ormt = v.ormt;
 
   // Assumes only caring about xy component on v.uv
   // Duplicate it (by default) for properties map and effects map UVs

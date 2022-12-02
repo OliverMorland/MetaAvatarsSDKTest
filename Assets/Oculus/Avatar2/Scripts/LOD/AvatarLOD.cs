@@ -1,71 +1,127 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
+
 using UnityEngine;
 using UnityEngine.Profiling;
 
+using CultureInfo = System.Globalization.CultureInfo;
+using Debug = UnityEngine.Debug;
+
 namespace Oculus.Avatar2
 {
-    public class AvatarLOD : MonoBehaviour
+    /**
+     * Per-avatar LOD information.
+     * This component is added to every avatar managed by the LOD manager.
+     * It is informational and not intended to be changed by the application.
+     * @see OvrAvatarLODManager
+     */
+    public sealed class AvatarLOD : MonoBehaviour
     {
-        private bool prevDebug_;
+        private const string logScope = "AvatarLOD";
 
+        /// Cached transform for this AvatarLOD
+        public Transform CachedTransform { get; private set; } = null;
+
+        /// The entity whose LOD is managed by this instance
+        public OvrAvatarEntity Entity { get; internal set; } = null;
+
+        // Whether the entity associated with this AvatarLOD is non-null and active
+        public bool EntityActive => !(Entity is null) && Entity.isActiveAndEnabled;
+
+        /// True if the avatar has been culled by the LOD manager.
         public bool culled { get; private set; }
 
+        /// If enabled, the overrideLevel value will be used instead of the calculated LOD.
         public bool overrideLOD = false;
-        private bool prevOverrideLOD_ = false;
 
+        private bool _prevOverrideLOD = false;
+
+        /// Desired level of detail for this avatar.
         public int overrideLevel
         {
-            get { return Mathf.Clamp(overrideLevel_, -1, maxLodLevel); }
-            set { overrideLevel_ = value; }
+            get => Mathf.Clamp(_overrideLevel, -1, maxLodLevel);
+            set => _overrideLevel = value;
         }
 
-        private int overrideLevel_ = 0;
-        private int prevOverrideLevel_ = 0;
+        // TODO: Initialize to `int.MinValue`?
+        private int _overrideLevel = default;
+        private int _prevOverrideLevel = default;
 
+        /// Transform on the avatar center joint.
         public Transform centerXform;
+
         public readonly List<Transform> extraXforms = new List<Transform>();
-        private List<AvatarLODGroup> lodGroups_ = new List<AvatarLODGroup>();
+        private readonly List<AvatarLODGroup> _lodGroups = new List<AvatarLODGroup>();
+
+        /// Vertex counts for each level of detail for this avatar.
         public readonly List<int> vertexCounts = new List<int>();
+
+        /// Triangle counts for each level of detail for this avatar.
         public readonly List<int> triangleCounts = new List<int>();
 
         private int _minLodLevel = -1;
+
+        /// Minimum LOD level loaded for this avatar.
         public int minLodLevel => _minLodLevel;
+
         private int _maxLodLevel = -1;
+
+        /// Maximum LOD level loaded for this avatar.
         public int maxLodLevel => _maxLodLevel;
 
+        /// Distance of avatar center joint from the LOD camera.
         public float distance;
+
+        /// Screen percent occupied by the avatar (0 - 1).
         public float screenPercent;
+
+        /// LOD level calculated based on screen percentage (before dynamic processing).
         public int wantedLevel;
+
+        /// LOD level calculated after dynamic processing.
         public int dynamicLevel;
+
+        ///
+        /// Importance of avatar for display purposes (geometric LOD).
+        /// This is from a logarithmic function by OvrAvatarLODManager.
+        /// @see OvrAvatarLODManager.dynamicLodWantedLogScale
+        ///
         public float lodImportance;
+
+        ///
+        /// Importance of avatar for update (animation) purposes.
+        /// This is from a logarithmic function by OvrAvatarLODManager.
+        /// @see OvrAvatarLODManager.screenPercentToUpdateImportanceCurvePower
+        ///  @see OvrAvatarLODManager.screenPercentToUpdateImportanceCurveMultiplier.
+        ///
         public float updateImportance;
-        public float lastUpdateAgeTicks; // clock time since last update, ticks
-        public float previousUpdateAgeWindowTicks; // total max age during previous two updates, ticks
-        public float lastUpdateAgeSeconds; // clock time since last update, seconds
-        public float previousUpdateAgeWindowSeconds; // total max age during previous two updates, seconds
-        public int lastUpdateCost = -1;
+
+        /// Network streaming fidelity for this avatar.
         public OvrAvatarEntity.StreamLOD dynamicStreamLod;
 
-        public Action<bool> CulledChangedEvent; // events are also available from the AvatarLODManager but this is more efficient for specific AvatarLOD component actions
+        /// Event invoked when the avatar's cull status has changed.
+        /// This event is also available from OvrAvatarLODManager.
+        /// @see OvrAvatarLODManager.CullChangedEvent
+        public Action<bool> CulledChangedEvent;
 
-        private GameObject debugCanvas_;
+        /// Event invoked when the avatar's cull status has changed.
+        /// This event is also available from OvrAvatarLODManager.
+        /// @see OvrAvatarLODManager.OnCullChangedEvent
+        public event Action<AvatarLOD, bool> OnCulledChangedEvent;
 
-        private int level_;
-        private int prevLevel_;
         private bool forceDisabled_;
+
+        private int _level;
+        private int _prevLevel;
 
         public int Level
         {
-            get { return level_; }
+            get => _level;
             set
             {
-                if (value == prevLevel_)
-                {
-                    return;
-                }
-                level_ = value;
+                if (value == _prevLevel) { return; }
+                _level = value;
 
                 if (!overrideLOD)
                 {
@@ -73,57 +129,90 @@ namespace Oculus.Avatar2
                     UpdateDebugLabel();
                 }
 
-                prevLevel_ = level_;
+                _prevLevel = _level;
             }
         }
 
-        public void SetForceDisable(bool tf)
+        public UInt32 UpdateCost
         {
-            forceDisabled_ = tf;
+            get
+            {
+                // Clear
+                // ASSUMPTION: Not more than 31 lods, so using int as bitfields is sufficient
+                int levelsWithCost = 0;
+
+                // Check costs for all lod groups
+                foreach (var lodGroup in _lodGroups) { levelsWithCost |= lodGroup.LevelsWithAnimationUpdateCost; }
+
+                UInt32 cost = 0;
+                for (int i = minLodLevel; i <= maxLodLevel; i++)
+                {
+                    cost += ((levelsWithCost & (i << i)) != 0) ? (UInt32)vertexCounts[i] : 0;
+                }
+
+                return cost;
+            }
+        }
+
+        private void Awake()
+        {
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+            _avatarId = ++_avatarIdSource;
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
+
+            CachedTransform = transform;
         }
 
         private void Start()
         {
             AvatarLODManager.Instance.AddLOD(this);
-            if (centerXform == null)
-            {
-                centerXform = transform;
-            }
+            if (centerXform == null) { centerXform = CachedTransform; }
+        }
+
+        private void OnDestroy()
+        {
+            DestroyLODParentIfOnlyChild();
+            AvatarLODManager.RemoveLOD(this);
         }
 
         // Returns true upon a state transition
         public bool SetCulled(bool nextCulled)
         {
-            if (nextCulled != culled)
-            {
-                culled = nextCulled;
-                CulledChangedEvent?.Invoke(culled);
-                return true;
-            }
-            return false;
+            if (nextCulled == culled) { return false; }
+
+            culled = nextCulled;
+            CulledChangedEvent?.Invoke(culled);
+            OnCulledChangedEvent?.Invoke(this, culled);
+            return true;
         }
+
+        private static List<AvatarLODParent> _parentsCache = null;
 
         private bool HasValidLODParent()
         {
-            bool found = false;
-            var lodParents = gameObject.transform.parent.GetComponents<AvatarLODParent>();
-            foreach (AvatarLODParent lodParent in lodParents)
-            {
-                found |= !lodParent.beingDestroyed;
-            }
+            CachedTransform.parent.GetComponents(_parentsCache ??= new List<AvatarLODParent>());
 
+            bool found = false;
+            foreach (var lodParent in _parentsCache)
+            {
+                if (!lodParent.beingDestroyed)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            _parentsCache.Clear();
             return found;
         }
 
         private void DestroyLODParentIfOnlyChild()
         {
-            if (gameObject.transform.parent)
+            var cachedParent = CachedTransform.parent;
+            if (cachedParent != null)
             {
-                var lodParents = gameObject.transform.parent.gameObject.GetComponents<AvatarLODParent>();
-                foreach (AvatarLODParent lodParent in lodParents)
-                {
-                    lodParent.DestroyIfOnlyLODChild(this);
-                }
+                cachedParent.gameObject.GetComponents(_parentsCache ??= new List<AvatarLODParent>());
+                foreach (var lodParent in _parentsCache) { lodParent.DestroyIfOnlyLODChild(this); }
+                _parentsCache.Clear();
             }
         }
 
@@ -135,93 +224,302 @@ namespace Oculus.Avatar2
 
         private void OnTransformParentChanged()
         {
-            Transform t = gameObject.transform.parent;
-            if (t != null && !HasValidLODParent())
-            {
-                t.gameObject.AddComponent<AvatarLODParent>();
-            }
+            var parentTx = CachedTransform.parent;
+            if (parentTx != null && !HasValidLODParent()) { parentTx.gameObject.AddComponent<AvatarLODParent>(); }
 
             AvatarLODManager.ParentStateChanged(this);
         }
 
         // This behaviour is manually updated at a specific time during OvrAvatarManager::Update()
         // to prevent issues with Unity script update ordering
-        public void UpdateOverride()
+        internal void UpdateOverride()
         {
-            if (!isActiveAndEnabled || forceDisabled_)
-            {
-                return;
-            }
+            if (!isActiveAndEnabled || forceDisabled_) { return; }
 
             Profiler.BeginSample("AvatarLOD::UpdateOverride");
 
-            bool needsDebugLabelUpdate = false;
-            if (overrideLevel != prevOverrideLevel_)
-            {
-                if (overrideLOD)
-                {
-                    UpdateLOD();
-                    needsDebugLabelUpdate = true;
-                }
-                prevOverrideLevel_ = overrideLevel;
-            }
+            bool needsUpdateLod = (overrideLOD && overrideLevel != _prevOverrideLevel) ||
+                                  (overrideLOD != _prevOverrideLOD);
 
-            if (overrideLOD != prevOverrideLOD_)
-            {
-                UpdateLOD();
-                needsDebugLabelUpdate = true;
-                prevOverrideLOD_ = overrideLOD;
-            }
+            _prevOverrideLevel = overrideLevel;
+            _prevOverrideLOD = overrideLOD;
 
-            bool debug = AvatarLODManager.Instance.debug.displayLODLabels || AvatarLODManager.Instance.debug.displayAgeLabels;
-            if (debug || debug != prevDebug_)
-            {
-                needsDebugLabelUpdate = true;
-                prevDebug_ = debug;
-            }
+            if (needsUpdateLod) { UpdateLOD(); }
 
-            if (needsDebugLabelUpdate)
-            {
-                UpdateDebugLabel();
-            }
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+            var needsDebugLabelUpdate = AvatarLODManager.Instance.debug.displayLODLabels ||
+                                        AvatarLODManager.Instance.debug.displayAgeLabels;
+
+            if (needsDebugLabelUpdate || needsUpdateLod) { UpdateDebugLabel(); }
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
 
             Profiler.EndSample();
         }
 
-        void OnDestroy()
+        private void UpdateLOD()
         {
-            DestroyLODParentIfOnlyChild();
-            AvatarLODManager.RemoveLOD(this);
+            if (forceDisabled_) { return; }
+
+            if (_lodGroups != null && _lodGroups.Count > 0)
+            {
+                foreach (var lodGroup in _lodGroups) { lodGroup.Level = overrideLOD ? overrideLevel : Level; }
+            }
         }
 
+        private void AddLODGroup(AvatarLODGroup group)
+        {
+            _lodGroups.Add(group);
+            group.parentLOD = this;
+            group.Level = overrideLOD ? overrideLevel : Level;
+        }
+
+        internal void RemoveLODGroup(AvatarLODGroup group)
+        {
+            _lodGroups.Remove(group);
+        }
+
+        internal void ClearLODGameObjects()
+        {
+            // Vertex counts will be reset by this function.
+            vertexCounts.Clear();
+            triangleCounts.Clear();
+
+            _minLodLevel = -1;
+            _maxLodLevel = -1;
+
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+            CAPI.ovrAvatar2LOD_UnregisterAvatar(_avatarId);
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
+        }
+
+        public void AddLODGameObjectGroupByAvatarSkinnedMeshRenderers(GameObject parentGameObject, Dictionary<string, List<GameObject>> suffixToObj)
+        {
+            foreach (var kvp in suffixToObj)
+            {
+                AvatarLODSkinnableGroup gameObjectGroup = parentGameObject.GetOrAddComponent<AvatarLODSkinnableGroup>();
+                gameObjectGroup.GameObjects = kvp.Value.ToArray();
+                AddLODGroup(gameObjectGroup);
+            }
+        }
+
+        public void AddLODGameObjectGroupBySdkRenderers(Dictionary<int, OvrAvatarEntity.LodData> lodObjects)
+        {
+            // Vertex counts will be reset by this function.
+            vertexCounts.Clear();
+            triangleCounts.Clear();
+
+            if (lodObjects.Count > 0)
+            {
+                // first see what the limits could be...
+                _minLodLevel = int.MaxValue;
+                _maxLodLevel = int.MinValue;
+
+                foreach (var entry in lodObjects)
+                {
+                    int lodIndex = entry.Key;
+                    if (_minLodLevel > lodIndex) { _minLodLevel = lodIndex; }
+                    if (_maxLodLevel < lodIndex) { _maxLodLevel = lodIndex; }
+                }
+
+                OvrAvatarLog.LogVerbose($"Set lod range (min:{_minLodLevel}, max:{_maxLodLevel})", logScope, this);
+            }
+            else
+            {
+                OvrAvatarLog.LogError("No LOD data specified", logScope, this);
+
+                _maxLodLevel = _minLodLevel = -1;
+            }
+
+            // first find common parent and children;
+            if (maxLodLevel >= vertexCounts.Count || maxLodLevel >= triangleCounts.Count)
+            {
+                vertexCounts.Capacity = maxLodLevel;
+                triangleCounts.Capacity = maxLodLevel;
+                while (maxLodLevel >= vertexCounts.Count) { vertexCounts.Add(0); }
+                while (maxLodLevel >= triangleCounts.Count) { triangleCounts.Add(0); }
+            }
+
+            GameObject[] children = new GameObject[maxLodLevel + 1];
+            Transform commonParent = null;
+            for (int lodIdx = minLodLevel; lodIdx <= maxLodLevel; ++lodIdx)
+            {
+                if (lodObjects.TryGetValue(lodIdx, out var lodData))
+                {
+                    vertexCounts[lodIdx] = lodData.vertexCount;
+                    triangleCounts[lodIdx] = lodData.triangleCount;
+
+                    children[lodIdx] = lodData.gameObject;
+
+                    var localParentTx = lodData.transform.parent;
+
+                    OvrAvatarLog.AssertConstMessage(commonParent == null || commonParent == localParentTx
+                        , "Expected all lodObjects to have the same parent object.", logScope, this);
+
+                    commonParent = localParentTx;
+                }
+            }
+
+            if (commonParent != null)
+            {
+                var gameObjectGroup = commonParent.gameObject.GetOrAddComponent<AvatarLODSkinnableGroup>();
+                gameObjectGroup.GameObjects = children;
+                AddLODGroup(gameObjectGroup);
+            }
+
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+            // Register avatar with native runtime LOD scheme
+            // Temporary for LOD editing bring up
+            CAPI.ovrAvatar2LODRegistration reg;
+            reg.avatarId = _avatarId;
+            reg.lodWeights = vertexCounts.ToArray();
+            reg.lodThreshold = _maxLodLevel;
+
+            CAPI.ovrAvatar2LOD_RegisterAvatar(reg);
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
+        }
+
+        public AvatarLODActionGroup AddLODActionGroup(GameObject go, Action[] actions)
+        {
+            var actionLODGroup = go.GetOrAddComponent<AvatarLODActionGroup>();
+            if (actions?.Length > 0)
+            {
+                actionLODGroup.Actions = new List<Action>(actions);
+            }
+            AddLODGroup(actionLODGroup);
+            return actionLODGroup;
+        }
+
+        public AvatarLODActionGroup AddLODActionGroup(GameObject go, Action action, int levels)
+        {
+            var actions = new Action[levels];
+            if (action != null)
+            {
+                for (int i = 0; i < levels; i++)
+                {
+                    actions[i] = action;
+                }
+            }
+
+            return AddLODActionGroup(go, actions);
+        }
+
+        // Find a valid LOD near the requested one
+        public int CalcAdjustedLod(int lod)
+        {
+            var adjustedLod = Mathf.Clamp(lod, minLodLevel, maxLodLevel);
+            if (adjustedLod != -1 && vertexCounts[adjustedLod] == 0)
+            {
+                adjustedLod = GetNextLod(lod);
+                if (adjustedLod == -1) { adjustedLod = GetPreviousLod(lod); }
+            }
+            return adjustedLod;
+        }
+
+        private int GetNextLod(int lod)
+        {
+            if (maxLodLevel >= 0)
+            {
+                for (int nextLod = lod + 1; nextLod <= maxLodLevel; ++nextLod)
+                {
+                    if (vertexCounts[nextLod] != 0) { return nextLod; }
+                }
+            }
+            return -1;
+        }
+
+        internal int GetPreviousLod(int lod)
+        {
+            if (minLodLevel >= 0)
+            {
+                for (int prevLod = lod - 1; prevLod >= minLodLevel; --prevLod)
+                {
+                    if (vertexCounts[prevLod] != 0) { return prevLod; }
+                }
+            }
+            return -1;
+        }
+
+        public void Reset()
+        {
+            ResetXforms();
+        }
+
+        private void ResetXforms()
+        {
+            centerXform = transform;
+            extraXforms.Clear();
+        }
+
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+        // AvatarLODManager.Initialize doesn't run for all the avatars added
+        // in LODScene so assign a unique id internally on construction.
+        private static Int32 _avatarIdSource = default;
+
+        // Temporary to bring up runtime LOD system
+        // Unique ID for this avatar
+        private Int32 _avatarId;
+
+        /// Clock time since last update (in seconds).
+        public float lastUpdateAgeSeconds;
+
+        /// Total maximum age during previous two updates (in seconds).
+        public float previousUpdateAgeWindowSeconds;
+
+        private GameObject _debugCanvas;
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
+
+        [Conditional("UNITY_DEVELOPMENT")]
+        [Conditional("UNITY_EDITOR")]
+        internal void TrackUpdateAge(float deltaTime)
+        {
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+            // Track of the last update time for debug tools
+            if (EntityActive)
+            {
+                previousUpdateAgeWindowSeconds = lastUpdateAgeSeconds + deltaTime;
+                lastUpdateAgeSeconds = 0;
+            }
+            else { lastUpdateAgeSeconds += Time.deltaTime; }
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
+        }
+
+        [Conditional("UNITY_DEVELOPMENT")]
+        [Conditional("UNITY_EDITOR")]
         public void UpdateDebugLabel()
         {
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
             if (AvatarLODManager.Instance.debug.displayLODLabels || AvatarLODManager.Instance.debug.displayAgeLabels)
             {
-                if (debugCanvas_ == null && AvatarLODManager.Instance.avatarLodDebugCanvas != null)
+                if (_debugCanvas == null && AvatarLODManager.Instance.avatarLodDebugCanvas != null)
                 {
-                    GameObject canvasPrefab = AvatarLODManager.Instance.avatarLodDebugCanvas; //LoadAssetWithFullPath<GameObject>($"{AvatarPaths.ASSET_SOURCE_PATH}/LOD/Prefabs/AVATAR_LOD_DEBUG_CANVAS.prefab");
+                    GameObject
+                        canvasPrefab
+                            = AvatarLODManager.Instance
+                                .avatarLodDebugCanvas; //LoadAssetWithFullPath<GameObject>($"{AvatarPaths.ASSET_SOURCE_PATH}/LOD/Prefabs/AVATAR_LOD_DEBUG_CANVAS.prefab");
                     if (canvasPrefab != null)
                     {
-                        debugCanvas_ = Instantiate(canvasPrefab, centerXform);
+                        _debugCanvas = Instantiate(canvasPrefab, centerXform);
 
                         // Set position instead of localPosition to keep the label in a steady readable location.
-                        debugCanvas_.transform.position = debugCanvas_.transform.parent.position + AvatarLODManager.Instance.debug.displayLODLabelOffset;
+                        _debugCanvas.transform.position = _debugCanvas.transform.parent.position +
+                                                          AvatarLODManager.Instance.debug.displayLODLabelOffset;
 
-                        debugCanvas_.SetActive(true);
+                        _debugCanvas.SetActive(true);
                     }
                     else
                     {
-                        OvrAvatarLog.LogWarning("DebugLOD will require the avatarLodDebugCanvas prefab to be specified. This has a simple UI card that allows for world space display of LOD.");
+                        OvrAvatarLog.LogWarning(
+                            "DebugLOD will require the avatarLodDebugCanvas prefab to be specified. This has a simple UI card that allows for world space display of LOD.");
                     }
                 }
 
-                if (debugCanvas_ != null)
+                if (_debugCanvas != null)
                 {
-                    var text = debugCanvas_.GetComponentInChildren<UnityEngine.UI.Text>();
+                    var text = _debugCanvas.GetComponentInChildren<UnityEngine.UI.Text>();
 
                     // Set position instead of localPosition to keep the label in a steady readable location.
-                    debugCanvas_.transform.position = debugCanvas_.transform.parent.position + AvatarLODManager.Instance.debug.displayLODLabelOffset;
+                    _debugCanvas.transform.position = _debugCanvas.transform.parent.position +
+                                                      AvatarLODManager.Instance.debug.displayLODLabelOffset;
 
                     if (AvatarLODManager.Instance.debug.displayLODLabels)
                     {
@@ -233,258 +531,36 @@ namespace Oculus.Avatar2
 
                     if (AvatarLODManager.Instance.debug.displayAgeLabels)
                     {
-                        text.text = previousUpdateAgeWindowSeconds.ToString();
-                        text.color = new Color(Math.Max(Math.Min(-1.0f + 2.0f * previousUpdateAgeWindowSeconds, 1.0f), 0.0f), Math.Max(Math.Min(previousUpdateAgeWindowSeconds * 2.0f, 2.0f - 2.0f * previousUpdateAgeWindowSeconds), 0f), Math.Max(Math.Min(1.0f - 2.0f * previousUpdateAgeWindowSeconds, 1.0f), 0.0f));
+                        text.text = previousUpdateAgeWindowSeconds.ToString(CultureInfo.InvariantCulture);
+                        text.color = new Color(
+                            Math.Max(Math.Min(-1.0f + 2.0f * previousUpdateAgeWindowSeconds, 1.0f), 0.0f)
+                            , Math.Max(
+                                Math.Min(
+                                    previousUpdateAgeWindowSeconds * 2.0f, 2.0f - 2.0f * previousUpdateAgeWindowSeconds)
+                                , 0f), Math.Max(Math.Min(1.0f - 2.0f * previousUpdateAgeWindowSeconds, 1.0f), 0.0f));
                         text.fontSize = 10;
                     }
                 }
             }
             else
             {
-                if (debugCanvas_ != null)
+                if (_debugCanvas != null)
                 {
-                    debugCanvas_.SetActive(false);
-                    debugCanvas_ = null;
+                    _debugCanvas.SetActive(false);
+                    _debugCanvas = null;
                 }
             }
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
         }
 
-        public void UpdateLOD()
+        [Conditional("UNITY_DEVELOPMENT")]
+        [Conditional("UNITY_EDITOR")]
+        internal void ForceUpdateLOD<T>()
         {
-            if (forceDisabled_)
-                return;
-            for (int i = 0; i < lodGroups_.Count; i++)
+            foreach (var lodGroup in _lodGroups)
             {
-                lodGroups_[i].Level = overrideLOD ? overrideLevel : Level;
+                if (lodGroup is T) { lodGroup.UpdateLODGroup(); }
             }
-        }
-
-        public void ForceUpdateLOD<T>()
-        {
-            for (int i = 0; i < lodGroups_.Count; i++)
-            {
-                if (lodGroups_[i] is T)
-                    lodGroups_[i].UpdateLODGroup();
-            }
-        }
-
-        public void ForceUpdateLOD()
-        {
-            for (int i = 0; i < lodGroups_.Count; i++)
-            {
-                lodGroups_[i].UpdateLODGroup();
-            }
-        }
-
-        public void ResetLODGroups()
-        {
-            for (int i = 0; i < lodGroups_.Count; i++)
-            {
-                lodGroups_[i].ResetLODGroup();
-            }
-        }
-
-        public void SetLODGroups(List<AvatarLODGroup> groups)
-        {
-            lodGroups_ = groups;
-            for (int i = 0; i < lodGroups_.Count; i++)
-            {
-                lodGroups_[i].parentLOD = this;
-            }
-        }
-
-        public void AddLODGroup(AvatarLODGroup group)
-        {
-            lodGroups_.Add(group);
-            group.parentLOD = this;
-            group.Level = overrideLOD ? overrideLevel : Level;
-        }
-
-        public void RemoveLODGroup(AvatarLODGroup group)
-        {
-            lodGroups_.Remove(group);
-        }
-
-        public void ClearLODGameObjects()
-        {
-            // Vertex counts will be reset by this function.
-            vertexCounts.Clear();
-            triangleCounts.Clear();
-
-            _minLodLevel = -1;
-            _maxLodLevel = -1;
-        }
-
-        public void AddLODGameObjectGroupByAvatarSkinnedMeshRenderers(GameObject parentGameObject, Dictionary<string, List<GameObject>> suffixToObj)
-        {
-            foreach (var kvp in suffixToObj)
-            {
-                AvatarLODGameObjectGroup gameObjectGroup = parentGameObject.GetOrAddComponent<AvatarLODGameObjectGroup>();
-                gameObjectGroup.GameObjects = kvp.Value.ToArray();
-                AddLODGroup(gameObjectGroup);
-            }
-        }
-
-        public void AddLODGameObjectGroupBySdkRenderers(Dictionary<int, Oculus.Avatar2.OvrAvatarEntity.LodData> lodObjects)
-        {
-            // Vertex counts will be reset by this function.
-            vertexCounts.Clear();
-            triangleCounts.Clear();
-
-            // first see what the limits could be...
-            _minLodLevel = lodObjects.First().Key;
-            _maxLodLevel = minLodLevel;
-            foreach (var entry in lodObjects)
-            {
-                if (_minLodLevel > entry.Key) _minLodLevel = entry.Key;
-                if (_maxLodLevel < entry.Key) _maxLodLevel = entry.Key;
-            }
-
-            // first find common parent and children;
-            GameObject commonParent = null;
-            GameObject[] children = new GameObject[maxLodLevel + 1];
-            if (maxLodLevel >= vertexCounts.Count || maxLodLevel >= triangleCounts.Count)
-            {
-                vertexCounts.Capacity = maxLodLevel;
-                triangleCounts.Capacity = maxLodLevel;
-                while (maxLodLevel >= vertexCounts.Count)
-                {
-                    vertexCounts.Add(0);
-                }
-                while (maxLodLevel >= triangleCounts.Count)
-                {
-                    triangleCounts.Add(0);
-                }
-            }
-
-            for (int i = minLodLevel; i < maxLodLevel + 1; i++)
-            {
-                if (lodObjects.TryGetValue(i, out var lodData))
-                {
-                    var go = lodData.gameObject;
-                    vertexCounts[i] += lodData.vertexCount;
-                    triangleCounts[i] += lodData.triangleCount;
-                    children[i] = go;
-                    var localParent = go.transform.parent.gameObject;
-                    if (commonParent == null)
-                    {
-                        commonParent = localParent;
-                    }
-                    else if (commonParent != localParent)
-                    {
-                        OvrAvatarLog.LogError("Expected all lodObjects to have the same parent object.");
-                    }
-                }
-            }
-            AvatarLODGameObjectGroup gameObjectGroup = commonParent.GetOrAddComponent<AvatarLODGameObjectGroup>();
-            gameObjectGroup.GameObjects = children;
-            AddLODGroup(gameObjectGroup);
-        }
-
-        public AvatarLODBehaviourStateGroup AddLODBehaviourStateGroup(
-          GameObject go,
-          Behaviour[] behaviours,
-          bool[] lodStates)
-        {
-            AvatarLODBehaviourStateGroup behaviourLODGroup = go.GetOrAddComponent<AvatarLODBehaviourStateGroup>();
-            behaviourLODGroup.LodBehaviours = new List<Behaviour>(behaviours);
-            behaviourLODGroup.EnabledStates = new List<bool>(lodStates);
-            AddLODGroup(behaviourLODGroup);
-            return behaviourLODGroup;
-        }
-
-        public AvatarLODBehaviourStateGroup AddLODBehaviourStateGroup(
-          Behaviour behaviour,
-          bool[] lodStates)
-        {
-            return AddLODBehaviourStateGroup(behaviour.gameObject, new Behaviour[] { behaviour }, lodStates);
-        }
-
-        public AvatarLODBehaviourStateGroup AddLODBehaviourStateGroup(GameObject go, Type[] behaviourTypes,
-          bool[] lodStates)
-        {
-            var behaviours = new List<Behaviour>();
-
-            foreach (var type in behaviourTypes)
-            {
-                Component[] cmpts = go.GetComponentsInChildren(type, true);
-                foreach (var component in cmpts)
-                {
-                    behaviours.Add((Behaviour)component);
-                }
-            }
-
-            return behaviours.Count > 0 ? AddLODBehaviourStateGroup(go, behaviours.ToArray(), lodStates) : null;
-        }
-
-        public AvatarLODActionGroup AddLODActionGroup(GameObject go, Action[] actions)
-        {
-            AvatarLODActionGroup actionLODGroup = go.GetOrAddComponent<AvatarLODActionGroup>();
-            actionLODGroup.Actions = new List<Action>(actions);
-            AddLODGroup(actionLODGroup);
-            return actionLODGroup;
-        }
-
-        public AvatarLODActionGroup AddLODActionGroup(GameObject go, Action action, int levels)
-        {
-            var actions = new Action[levels];
-            for (int i = 0; i < levels; i++)
-            {
-                actions[i] = action;
-            }
-
-            return AddLODActionGroup(go, actions);
-        }
-
-        // Find a valid LOD near the requested one
-        public int CalcAdjustedLod(int lod)
-        {
-            var adjustedLod = Math.Min(Math.Max(lod, minLodLevel), maxLodLevel);
-            if (adjustedLod != -1 && vertexCounts[adjustedLod] == 0)
-            {
-                adjustedLod = GetNextLod(lod);
-                if (adjustedLod == -1)
-                {
-                    adjustedLod = GetPreviousLod(lod);
-                }
-            }
-            return adjustedLod;
-        }
-
-        public int GetNextLod(int lod)
-        {
-            if (maxLodLevel >= 0)
-            {
-                for (int nextLod = lod + 1; nextLod <= maxLodLevel; ++nextLod)
-                {
-                    if (vertexCounts[nextLod] != 0)
-                    {
-                        return nextLod;
-                    }
-                }
-            }
-            return -1;
-        }
-
-        public int GetPreviousLod(int lod)
-        {
-            if (minLodLevel >= 0)
-            {
-                for (int prevLod = lod - 1; prevLod >= minLodLevel; --prevLod)
-                {
-                    if (vertexCounts[prevLod] != 0)
-                    {
-                        return prevLod;
-                    }
-                }
-            }
-            return -1;
-        }
-
-        public void Reset()
-        {
-            centerXform = transform;
-            extraXforms.Clear();
         }
     }
 }

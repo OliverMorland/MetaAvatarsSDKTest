@@ -1,23 +1,30 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 
 using UnityEngine;
+
+using Debug = UnityEngine.Debug;
 
 namespace Oculus.Avatar2
 {
     public partial class OvrAvatarEntity : MonoBehaviour
     {
         [Header("LOD")]
-        protected AvatarLOD _avatarLOD;
+        private AvatarLOD _avatarLOD;
 
-        internal protected readonly LodData[] _visibleLodData = new LodData[CAPI.ovrAvatar2EntityLODFlagsCount];
+        private readonly LodData[] _visibleLodData = new LodData[CAPI.ovrAvatar2EntityLODFlagsCount];
 
-        protected int lodObjectCount { get; private set; } = 0;
+        /// Number of LODs loaded for this avatar.
+        private int lodObjectCount { get; set; } = 0;
 
+        /// Index of lowest quality level of detail loaded for this avatar.
         public int LowestQualityLODIndex { get; private set; } = -1;
+
+        /// Index of highest quality level of detail loaded for this avatar.
         public int HighestQualityLODIndex { get; private set; } = -1;
 
+        /// Provides vertex and triangle counts for each level of detail.
         public IReadOnlyList<LodCostData> CopyVisibleLODCostData()
         {
             var lodCosts = new LodCostData[CAPI.ovrAvatar2EntityLODFlagsCount];
@@ -45,6 +52,7 @@ namespace Oculus.Avatar2
             return lodDict;
         }
 
+        /// Per-avatar level of detail information.
         public AvatarLOD AvatarLOD
         {
             get
@@ -52,13 +60,19 @@ namespace Oculus.Avatar2
                 if (_avatarLOD == null)
                 {
                     _avatarLOD = gameObject.GetOrAddComponent<AvatarLOD>();
+
+                    // In some edge cases `GetOrAddComponent` can return null
+                    if (_avatarLOD != null)
+                    {
+                        _avatarLOD.Entity = this;
+                    }
                 }
 
                 return _avatarLOD;
             }
         }
 
-        // TODO: Setup LOD control via these properties, suppresing unused warnings for now
+        // TODO: Setup LOD control via these properties, suppressing unused warnings for now
 #pragma warning disable 0414
         // Intended LOD to render
         // TODO: Have LOD system drive this value
@@ -73,12 +87,11 @@ namespace Oculus.Avatar2
         // High level container for a given singular LOD, may combine multiple primitive instances
         public struct LodData
         {
-            internal LodData(GameObject gob, float cover)
+            internal LodData(GameObject gob)
             {
                 gameObject = gob;
                 transform = gob.transform;
 
-                coverage = cover;
                 instances = new HashSet<OvrAvatarRenderable>();
                 totalCost = default;
             }
@@ -87,8 +100,8 @@ namespace Oculus.Avatar2
             public bool HasInstances => instances != null && instances.Count > 0;
 
             // TODO: Refactor AvatarLOD and remove
-            public int vertexCount => (int)totalCost.meshVertexCount;
-            public int triangleCount => (int)totalCost.renderTriangleCount;
+            public int vertexCount => (int) totalCost.meshVertexCount;
+            public int triangleCount => (int) totalCost.renderTriangleCount;
 
             // TODO: Remove gameObject and transform fields - manage these internally
             public readonly GameObject gameObject;
@@ -96,7 +109,6 @@ namespace Oculus.Avatar2
 
             // Discrete renderables, may be parented to various gameObjects
             private readonly HashSet<OvrAvatarRenderable> instances;
-            public readonly float coverage;
 
             public LodCostData totalCost;
 
@@ -125,11 +137,20 @@ namespace Oculus.Avatar2
         }
 
         // TODO: Move LodCostData out of OvrAvatarEntity, it is used by other classes too
+        /**
+         * Contains vertex and triangle counts for a single level of detail.
+         * This is used by the avatar LOD system to select the proper
+         * LOD based on application specified vertex limits.
+         * @see OvrAvatarLODManager
+         */
         public readonly struct LodCostData
         {
+            /// Number of vertices in avatar mesh.
             public readonly uint meshVertexCount;
             // TODO: Deprecate, use triCount instead
+            /// Number of vertices in the morph targets.
             public readonly uint morphVertexCount;
+            /// Number of triangles in the avatar mesh.
             public readonly uint renderTriangleCount;
             // TODO: Include number of skinned bones + num morph targets
 
@@ -141,7 +162,13 @@ namespace Oculus.Avatar2
             }
             internal LodCostData(OvrAvatarPrimitive prim)
                 : this(prim.meshVertexCount, prim.morphVertexCount, prim.triCount) { }
-
+            ///
+            /// Add the second LOD cost to the first and return
+            /// the combined cost of both LODs.
+            ///
+            /// @param total    first LodCostData to add.
+            /// @param add      second LodCostData to add.
+            /// @returns LodCostData with total cost of both LODs.
             // TODO: inplace Increment/Decrement would be useful
             public static LodCostData Sum(in LodCostData total, in LodCostData add)
             {
@@ -152,6 +179,13 @@ namespace Oculus.Avatar2
                 );
             }
 
+            ///
+            /// Subtract the second LOD cost from the first and return
+            /// the difference between the LODs.
+            ///
+            /// @param total    LodCostData to subtract from.
+            /// @param sub      LodCostData to subtract.
+            /// @returns LodCostData with different between LODs.
             public static LodCostData Subtract(in LodCostData total, in LodCostData sub)
             {
                 Debug.Assert(total.meshVertexCount >= sub.meshVertexCount);
@@ -163,17 +197,20 @@ namespace Oculus.Avatar2
             }
         }
 
-        protected void InitAvatarLOD()
+        private void InitAvatarLOD()
         {
             AvatarLOD.CulledChangedEvent += OnCullChangedEvent;  // Access to the public AvatarLod causes the component to be GetOrAdded (see above)
         }
 
         internal void UpdateAvatarLODOverride()    // internal so it can be called from the LOD Manager, which runs at a slower framerate
         {
-            _avatarLOD.UpdateOverride();
+            if (_avatarLOD != null)
+            {
+                _avatarLOD.UpdateOverride();
+            }
         }
 
-        protected void ShutdownAvatarLOD()
+        private  void ShutdownAvatarLOD()
         {
             if (_avatarLOD != null) // check the private instance to avoid creating a new one on the spot
             {
@@ -188,10 +225,10 @@ namespace Oculus.Avatar2
         {
             var avatarLod = AvatarLOD;
             var avatarLevel = avatarLod.Level;
-            if (0 <= avatarLevel && avatarLevel < avatarLod.vertexCounts.Count)
+            if (0 <= avatarLevel)
             {
                 importance = avatarLod.updateImportance;
-                cost = (UInt32)avatarLod.vertexCounts[avatarLevel];
+                cost = avatarLod.UpdateCost;
             }
             else
             {
@@ -206,28 +243,28 @@ namespace Oculus.Avatar2
 
             // set importance for next frame
             CAPI.ovrAvatar2Importance_SetImportanceAndCost(entityId, importance, cost);
-
-            _avatarLOD.lastUpdateCost = (int)cost;
         }
 
+        [Conditional("UNITY_DEVELOPMENT")]
+        [Conditional("UNITY_EDITOR")]
         internal void TrackUpdateAge()
         {
-                // Track of the last update time for debug tools
-                if (EntityActive)
-                {
-                    AvatarLOD.previousUpdateAgeWindowSeconds = AvatarLOD.lastUpdateAgeSeconds + Time.deltaTime;
-                    AvatarLOD.lastUpdateAgeSeconds = 0;
-                    AvatarLOD.previousUpdateAgeWindowTicks = AvatarLOD.lastUpdateAgeTicks + 1;
-                    AvatarLOD.lastUpdateAgeTicks = 0;
-                }
-                else
-                {
-                    AvatarLOD.lastUpdateAgeSeconds += Time.deltaTime;
-                    AvatarLOD.lastUpdateAgeTicks += 1;
-                }
+#if UNITY_EDITOR || UNITY_DEVELOPMENT
+            var avatarLod = AvatarLOD;
+            // Track of the last update time for debug tools
+            if (EntityActive)
+            {
+                avatarLod.previousUpdateAgeWindowSeconds = avatarLod.lastUpdateAgeSeconds + Time.deltaTime;
+                avatarLod.lastUpdateAgeSeconds = 0;
             }
+            else
+            {
+                avatarLod.lastUpdateAgeSeconds += Time.deltaTime;
+            }
+#endif // UNITY_EDITOR || UNITY_DEVELOPMENT
+        }
 
-        public virtual void OnCullChangedEvent(bool culled)
+        protected virtual void OnCullChangedEvent(bool culled)
         {
             OnCulled?.Invoke(culled);
 
@@ -237,7 +274,7 @@ namespace Oculus.Avatar2
 #endif
         }
 
-        protected void SetupLodGroups()
+        private void SetupLodGroups()
         {
             bool setupLodGroups = false;
 
@@ -263,51 +300,51 @@ namespace Oculus.Avatar2
             avatarLod.AddLODActionGroup(gameObject, UpdateAvatarLodColor, 5);
         }
 
-        protected void ResetLodCullingPoints()
+        private void ResetLodCullingPoints()
         {
-            if (AvatarLOD != null)
+            if (_avatarLOD != null)
             {
-                AvatarLOD.Reset();
+                _avatarLOD.Reset();
             }
         }
 
-        protected void SetupLodCullingPoints()
+        private void SetupLodCullingPoints()
         {
             // TODO: This seems like mostly logic which should live in AvatarLODManager?
             // populate the centerXform and the extraXforms for culling
-                if (HasJoints)
+            if (HasJoints)
+            {
+                var avatarLod = AvatarLOD;
+                var lodManager = AvatarLODManager.Instance;
+
+                var skelJoint = GetSkeletonTransformByType(lodManager.JointTypeToCenterOn);
+
+                OvrAvatarLog.Assert(skelJoint);
+
+                avatarLod.centerXform = skelJoint ? skelJoint : _baseTransform;
+
+                avatarLod.extraXforms.Clear();
+
+                foreach (var jointType in lodManager.JointTypesToCullOn)
                 {
-                    var avatarLod = AvatarLOD;
-                    var lodManager = AvatarLODManager.Instance;
-
-                    var skelJoint = GetSkeletonTransformByType(lodManager.JointTypeToCenterOn);
-
-                    OvrAvatarLog.Assert(skelJoint);
-
-                    avatarLod.centerXform = skelJoint ? skelJoint : _baseTransform;
-
-                    avatarLod.extraXforms.Clear();
-
-                    foreach (var jointType in lodManager.JointTypesToCullOn)
+                    var cullJoint = GetSkeletonTransformByType(jointType);
+                    OvrAvatarLog.Assert(cullJoint);
+                    if (cullJoint)
                     {
-                        var cullJoint = GetSkeletonTransformByType(jointType);
-                        OvrAvatarLog.Assert(cullJoint);
-                        if (cullJoint)
-                        {
-                            avatarLod.extraXforms.Add(cullJoint);
-                        }
+                        avatarLod.extraXforms.Add(cullJoint);
                     }
                 }
-                else
-                {
-                    // If there are no skeletal joints, reset AvatarLOD to default settings
-                    TeardownLodCullingPoints();
-                }
             }
+            else
+            {
+                // If there are no skeletal joints, reset AvatarLOD to default settings
+                TeardownLodCullingPoints();
+            }
+        }
 
-        protected void TeardownLodCullingPoints()
+        private void TeardownLodCullingPoints()
         {
-            if (_avatarLOD)
+            if (_avatarLOD != null)
             {
                 // reset JointToCenterOn
                 _avatarLOD.centerXform = _baseTransform;
@@ -325,8 +362,8 @@ namespace Oculus.Avatar2
         private void ExpandLODRange(uint lod)
         {
             // TODO: Initial values of -1/-1 aren't super clean
-            if (LowestQualityLODIndex < lod) { LowestQualityLODIndex = (int)lod; }
-            if (HighestQualityLODIndex < 0 || HighestQualityLODIndex > lod) { HighestQualityLODIndex = (int)lod; }
+            if (LowestQualityLODIndex < lod) { LowestQualityLODIndex = (int) lod; }
+            if (HighestQualityLODIndex < 0 || HighestQualityLODIndex > lod) { HighestQualityLODIndex = (int) lod; }
         }
         private void RefreshLODRange()
         {

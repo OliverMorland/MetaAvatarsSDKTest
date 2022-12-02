@@ -1,14 +1,16 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Oculus.Avatar2.External
+namespace Oculus.Avatar2.Experimental
 {
-    public partial class InternalCAPI
+    using ovrAvatar2Id = Avatar2.CAPI.ovrAvatar2Id;
+
+    public partial class CAPI
     {
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public struct ovrAvatar2AnimHierarchyAsset
         {
-            public CAPI.ovrAvatar2Id id; // asset id of the hierarchy
+            public ovrAvatar2Id id; // asset id of the hierarchy
             public string name; // name of the hierarchy
             public UInt64 hash; // name of the hierarchy
             public UInt32 jointCount; // Number of joints in the joint hierarchy
@@ -22,7 +24,7 @@ namespace Oculus.Avatar2.External
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public struct ovrAvatar2AnimClipAsset
         {
-            public CAPI.ovrAvatar2Id id; // asset id of the animation clip
+            public ovrAvatar2Id id; // asset id of the animation clip
             [MarshalAs(UnmanagedType.LPStr)]
             public IntPtr name; // name of the animation clip
             [MarshalAs(UnmanagedType.LPStr)]

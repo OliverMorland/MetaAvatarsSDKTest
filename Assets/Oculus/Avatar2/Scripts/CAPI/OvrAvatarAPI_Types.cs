@@ -30,7 +30,7 @@ namespace Oculus.Avatar2
         }
 
         // TODO: This is Int32 in native
-        public enum ovrAvatar2Id : UInt32
+        public enum ovrAvatar2Id : Int32
         {
             Invalid = 0
         }
@@ -163,6 +163,58 @@ namespace Oculus.Avatar2
             All = FirstPerson | ThirdPerson
         }
 
+        /**
+         * Configures what sub-meshes of the avatar
+         * will show.
+         *
+         * @see ovrAvatar2EntityMaterialTypes_
+         */
+        [Flags]
+        [System.Serializable]
+        public enum ovrAvatar2EntitySubMeshInclusionFlags : Int32
+        {
+            None = 0,
+
+            /// Outfit only
+            Outfit = 1 << 0,
+
+            /// Body only
+            Body = 1 << 1,
+
+            /// Head only
+            Head = 1 << 2,
+
+            /// Hair only
+            Hair = 1 << 3,
+
+            /// Eyebrow only
+            Eyebrow = 1 << 4,
+
+            /// L Eye only
+            L_Eye = 1 << 5,
+
+            /// R Eye only
+            R_Eye = 1 << 6,
+
+            /// Lashes only
+            Lashes = 1 << 7,
+
+            /// Facial hair only
+            FacialHair = 1 << 8,
+
+            /// Headwear only
+            Headwear = 1 << 9,
+
+            /// Earrings only
+            Earrings = 1 << 10,
+
+            ///  All manifestations requested.
+            All = Outfit | Body | Head | Hair | Eyebrow | L_Eye | R_Eye | Lashes | FacialHair | Headwear | Earrings,
+
+            ///  Works both as a test and also might be useful in some real applications.
+            BothEyes = L_Eye | R_Eye,
+        }
+
         //-----------------------------------------------------------------
         //
         // Math
@@ -210,13 +262,16 @@ namespace Oculus.Avatar2
             public float Length => Mathf.Sqrt(LengthSquared);
             public float LengthSquared => (x * x + y * y + z * z);
 
+            public ovrAvatar2Vector3f(float x_, float y_, float z_)
+            {
+                x = x_;
+                y = y_;
+                z = z_;
+            }
+
             public static implicit operator ovrAvatar2Vector3f(in Vector3 v)
             {
-                ovrAvatar2Vector3f result = new ovrAvatar2Vector3f();
-                result.x = v.x;
-                result.y = v.y;
-                result.z = v.z;
-                return result;
+                return new ovrAvatar2Vector3f(v.x, v.y, v.z);
             }
 
             public static implicit operator Vector3(in ovrAvatar2Vector3f v)
@@ -227,30 +282,30 @@ namespace Oculus.Avatar2
             public static ovrAvatar2Vector3f operator +(in ovrAvatar2Vector3f lhs, in ovrAvatar2Vector3f rhs)
             {
                 return new ovrAvatar2Vector3f
-                {
-                    x = lhs.x + rhs.x,
-                    y = lhs.y + rhs.y,
-                    z = lhs.z + rhs.z
-                };
+                (
+                    lhs.x + rhs.x,
+                    lhs.y + rhs.y,
+                    lhs.z + rhs.z
+                );
             }
             public static ovrAvatar2Vector3f operator -(in ovrAvatar2Vector3f lhs, in ovrAvatar2Vector3f rhs)
             {
                 return new ovrAvatar2Vector3f
-                {
-                    x = lhs.x - rhs.x,
-                    y = lhs.y - rhs.y,
-                    z = lhs.z - rhs.z
-                };
+                (
+                    lhs.x - rhs.x,
+                    lhs.y - rhs.y,
+                    lhs.z - rhs.z
+                );
             }
 
             public static ovrAvatar2Vector3f operator *(in ovrAvatar2Vector3f vec, float scale)
             {
                 return new ovrAvatar2Vector3f
-                {
-                    x = vec.x * scale,
-                    y = vec.y * scale,
-                    z = vec.z * scale
-                };
+                (
+                    vec.x * scale,
+                    vec.y * scale,
+                    vec.z * scale
+                );
             }
             public static ovrAvatar2Vector3f operator /(in ovrAvatar2Vector3f numer, float denom)
             {
@@ -267,22 +322,25 @@ namespace Oculus.Avatar2
             public float z;
             public float w;
 
-            public static implicit operator ovrAvatar2Vector4f(Vector4 v)
+            public ovrAvatar2Vector4f(float x_, float y_, float z_, float w_)
             {
-                ovrAvatar2Vector4f result = new ovrAvatar2Vector4f();
-                result.x = v.x;
-                result.y = v.y;
-                result.z = v.z;
-                result.w = v.w;
-                return result;
+                x = x_;
+                y = y_;
+                z = z_;
+                w = w_;
             }
 
-            public static implicit operator Vector4(ovrAvatar2Vector4f v)
+            public static implicit operator ovrAvatar2Vector4f(in Vector4 v)
+            {
+                return new ovrAvatar2Vector4f(v.x, v.y, v.z, v.w);
+            }
+
+            public static implicit operator Vector4(in ovrAvatar2Vector4f v)
             {
                 return new Vector4(v.x, v.y, v.z, v.w);
             }
 
-            public static implicit operator Color(ovrAvatar2Vector4f v)
+            public static implicit operator Color(in ovrAvatar2Vector4f v)
             {
                 return new Color(v.x, v.y, v.z, v.w);
             }
@@ -317,14 +375,20 @@ namespace Oculus.Avatar2
             public float z;
             public float w;
 
+            public float Length => Mathf.Sqrt(LengthSquared);
+            public float LengthSquared => ((x * x) + (y * y) + (z * z) + (w * w));
+
+            public ovrAvatar2Quatf(float x_, float y_, float z_, float w_)
+            {
+                x = x_;
+                y = y_;
+                z = z_;
+                w = w_;
+            }
+
             public static implicit operator ovrAvatar2Quatf(in Quaternion q)
             {
-                ovrAvatar2Quatf result = new ovrAvatar2Quatf();
-                result.x = q.x;
-                result.y = q.y;
-                result.z = q.z;
-                result.w = q.w;
-                return result;
+                return new ovrAvatar2Quatf(q.x, q.y, q.z, q.w);
             }
 
             public static implicit operator Quaternion(in ovrAvatar2Quatf q)
@@ -342,29 +406,32 @@ namespace Oculus.Avatar2
             public ovrAvatar2Quatf orientation;
             public ovrAvatar2Vector3f scale;
 
-            public ovrAvatar2Transform(ovrAvatar2Vector3f position, ovrAvatar2Quatf orientation)
+            public ovrAvatar2Transform(in ovrAvatar2Vector3f position_, in ovrAvatar2Quatf orientation_)
             {
-                this.position = position;
-                this.orientation = orientation;
-                this.scale.x = 1f;
-                this.scale.y = 1f;
-                this.scale.z = 1f;
+                position = position_;
+                orientation = orientation_;
+                scale.x = scale.y = scale.z = 1.0f;
             }
 
-            public ovrAvatar2Transform(ovrAvatar2Vector3f position, ovrAvatar2Quatf orientation, ovrAvatar2Vector3f scale)
+            public ovrAvatar2Transform(in ovrAvatar2Vector3f position_
+                , in ovrAvatar2Quatf orientation_, in ovrAvatar2Vector3f scale_)
             {
-                this.position = position;
-                this.orientation = orientation;
-                this.scale = scale;
+                position = position_;
+                orientation = orientation_;
+                scale = scale_;
             }
 
-            public static implicit operator ovrAvatar2Transform(Transform t)
+            public ovrAvatar2Transform(in Vector3 position_
+                , in Quaternion orientation_, in Vector3 scale_)
             {
-                ovrAvatar2Transform result = new ovrAvatar2Transform();
-                result.position = t.localPosition;
-                result.orientation = t.localRotation;
-                result.scale = t.localScale;
-                return result;
+                position = position_;
+                orientation = orientation_;
+                scale = scale_;
+            }
+
+            public static explicit operator ovrAvatar2Transform(Transform t)
+            {
+                return new ovrAvatar2Transform(t.localPosition, t.localRotation, t.localScale);
             }
         };
 
@@ -372,10 +439,10 @@ namespace Oculus.Avatar2
         [StructLayout(LayoutKind.Sequential)]
         public struct ovrAvatar2Matrix4f
         {
-            private float m00, m10, m20, m30;
-            private float m01, m11, m21, m31;
-            private float m02, m12, m22, m32;
-            private float m03, m13, m23, m33;
+            internal float m00, m10, m20, m30;
+            internal float m01, m11, m21, m31;
+            internal float m02, m12, m22, m32;
+            internal float m03, m13, m23, m33;
 
             public float this[int index]
             {
@@ -477,31 +544,8 @@ namespace Oculus.Avatar2
                 }
             }
 
-            public static implicit operator ovrAvatar2Matrix4f(Matrix4x4 m)
-            {
-                var matrix = new ovrAvatar2Matrix4f();
-
-                // Unity and sdk both use column major matrices
-                for (int i = 0; i < 16; ++i)
-                {
-                    matrix[i] = m[i];
-                }
-
-                return matrix;
-            }
-
-            public static implicit operator Matrix4x4(ovrAvatar2Matrix4f m)
-            {
-                var matrix = new Matrix4x4();
-
-                // Unity and sdk both use column major matrices
-                for (int i = 0; i < 16; ++i)
-                {
-                    matrix[i] = m[i];
-                }
-
-                return matrix;
-            }
+            public static explicit operator ovrAvatar2Matrix4f(in Matrix4x4 m) =>  m.ToAvatarMatrix();
+            public static explicit operator Matrix4x4(in ovrAvatar2Matrix4f m) => m.ToUnityMatrix();
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -600,6 +644,9 @@ namespace Oculus.Avatar2
             UnmatchedLoadFilters = 21,
             DeserializationPending = 22,
             LegacyJointTypeFallback = 23,
+            UnableToConnectToDevTools = 24,
+            RequestCancelled = 25,
+            BufferLargerThanExpected = 26,
 
             Count,
         }
@@ -680,5 +727,6 @@ namespace Oculus.Avatar2
 
             Count
         }
+
     }
 }

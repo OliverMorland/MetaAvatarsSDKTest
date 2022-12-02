@@ -1,99 +1,134 @@
+using System;
 using System.Collections.Generic;
+
+using Oculus.Skinning.GpuSkinning;
 
 using UnityEngine;
 using UnityEngine.Profiling;
 
-namespace Oculus.Skinning.GpuSkinning
+namespace Oculus.Avatar2
 {
-
-    public class OvrAvatarGpuSkinningController
+    public sealed class OvrAvatarGpuSkinningController : System.IDisposable
     {
-        private readonly HashSet<OvrGpuMorphTargetsCombiner> _combiners = new HashSet<OvrGpuMorphTargetsCombiner>();
-        private readonly HashSet<IOvrGpuSkinner> _skinners = new HashSet<IOvrGpuSkinner>();
+        // Avoid skinning more avatars than technically feasible
+        public const uint MaxGpuSkinnedAvatars = MaxSkinnedAvatarsPerFrame * 8;
 
-        private readonly List<OvrGpuMorphTargetsCombiner> _combinerList = new List<OvrGpuMorphTargetsCombiner>();
-        private readonly List<IOvrGpuSkinner> _skinnerList = new List<IOvrGpuSkinner>();
+        // Avoid skinning more avatars than GPU resources are preallocated for
+        public const uint MaxSkinnedAvatarsPerFrame = 32;
 
-        private readonly List<OvrGpuMorphTargetsCombiner> _activeCombinerList = new List<OvrGpuMorphTargetsCombiner>();
-        private readonly List<IOvrGpuSkinner> _activeSkinnerList = new List<IOvrGpuSkinner>();
+        private const int NumExpectedAvatars = 16;
 
+        private readonly List<OvrGpuMorphTargetsCombiner> _activeCombinerList = new List<OvrGpuMorphTargetsCombiner>(NumExpectedAvatars);
+        private readonly List<IOvrGpuSkinner> _activeSkinnerList = new List<IOvrGpuSkinner>(NumExpectedAvatars);
+        private readonly List<OvrComputeMeshAnimator> _activeAnimators = new List<OvrComputeMeshAnimator>(NumExpectedAvatars);
 
-        internal void AddCombiner(OvrGpuMorphTargetsCombiner combiner)
+        private OvrComputeBufferPool bufferPool = new OvrComputeBufferPool();
+
+        public void Dispose()
         {
-            Debug.Assert(combiner != null);
-            if (_combiners.Add(combiner))
-            {
-                _combinerList.Add(combiner);
-                combiner.parentController = this;
-            }
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
-        internal void RemoveCombiner(OvrGpuMorphTargetsCombiner combiner)
+        private void Dispose(bool isMainThread) { bufferPool.Dispose(); }
+
+        ~OvrAvatarGpuSkinningController()
         {
-            Debug.Assert(combiner != null);
-            if (_combiners.Remove(combiner))
-            {
-                _combinerList.Remove(combiner);
-                combiner.parentController = null;
-            }
+            Dispose(false);
         }
 
         internal void AddActiveCombiner(OvrGpuMorphTargetsCombiner combiner)
         {
-            Debug.Assert(combiner != null);
-            _activeCombinerList.Add(combiner);
-        }
-
-        internal void AddSkinner(IOvrGpuSkinner skinner)
-        {
-            Debug.Assert(skinner != null);
-            if (_skinners.Add(skinner))
-            {
-                _skinnerList.Add(skinner);
-                skinner.ParentController = this;
-            }
-        }
-
-        internal void RemoveSkinner(IOvrGpuSkinner skinner)
-        {
-            Debug.Assert(skinner != null);
-            if (_skinners.Remove(skinner))
-            {
-                _skinnerList.Remove(skinner);
-                skinner.ParentController = null;
-            }
+            AddGpuSkinningElement(_activeCombinerList, combiner);
         }
 
         internal void AddActiveSkinner(IOvrGpuSkinner skinner)
         {
-            Debug.Assert(skinner != null);
-            _activeSkinnerList.Add(skinner);
+            AddGpuSkinningElement(_activeSkinnerList, skinner);
+        }
+
+        internal void AddActivateComputeAnimator(OvrComputeMeshAnimator meshAnimator)
+        {
+            AddGpuSkinningElement(_activeAnimators, meshAnimator);
         }
 
         // This behaviour is manually updated at a specific time during OvrAvatarManager::Update()
         // to prevent issues with Unity script update ordering
-        public void UpdateInternal()
+        internal void UpdateInternal()
         {
             Profiler.BeginSample("OvrAvatarGpuSkinningController::UpdateInternal");
 
-            Profiler.BeginSample("OvrAvatarGpuSkinningController.CombinerCalls");
-            foreach (var combiner in _activeCombinerList)
+            if (_activeCombinerList.Count > 0)
             {
-                combiner.CombineMorphTargetWithCurrentWeights();
+                Profiler.BeginSample("OvrAvatarGpuSkinningController.CombinerCalls");
+                foreach (var combiner in _activeCombinerList)
+                {
+                    combiner.CombineMorphTargetWithCurrentWeights();
+                }
+                _activeCombinerList.Clear();
+                Profiler.EndSample(); // "OvrAvatarGpuSkinningController.CombinerCalls"
             }
-            _activeCombinerList.Clear();
-            Profiler.EndSample(); // "OvrAvatarGpuSkinningController.CombinerCalls"
 
-            Profiler.BeginSample("OvrAvatarGpuSkinningController.SkinnerCalls");
-            foreach (var skinner in _activeSkinnerList)
+            if (_activeSkinnerList.Count > 0)
             {
-                skinner.UpdateOutputTexture();
+                Profiler.BeginSample("OvrAvatarGpuSkinningController.SkinnerCalls");
+                foreach (var skinner in _activeSkinnerList)
+                {
+                    skinner.UpdateOutputTexture();
+                }
+                _activeSkinnerList.Clear();
+                Profiler.EndSample(); // "OvrAvatarGpuSkinningController.SkinnerCalls"
             }
-            _activeSkinnerList.Clear();
-            Profiler.EndSample(); // "OvrAvatarGpuSkinningController.SkinnerCalls"
 
+            if (_activeAnimators.Count > 0)
+            {
+                Profiler.BeginSample("OvrAvatarGpuSkinningController.AnimatorDispatches");
+                foreach (var animator in _activeAnimators)
+                {
+                    animator.DispatchAndUpdateOutputs();
+                }
+                _activeAnimators.Clear();
+                Profiler.EndSample(); // "OvrAvatarGpuSkinningController.AnimatorDispatches"
+            }
 
             Profiler.EndSample();
+        }
+
+        private void AddGpuSkinningElement<T>(List<T> list, T element) where T : class
+        {
+            Debug.Assert(element != null);
+            Debug.Assert(!list.Contains(element));
+            list.Add(element);
+        }
+
+        internal void StartFrame()
+        {
+            bufferPool.StartFrame();
+        }
+
+        internal void EndFrame()
+        {
+            bufferPool.EndFrame();
+        }
+
+        internal OvrComputeBufferPool.EntryJoints GetNextEntryJoints()
+        {
+            return bufferPool.GetNextEntryJoints();
+        }
+
+        internal ComputeBuffer GetJointBuffer()
+        {
+            return bufferPool.GetJointBuffer();
+        }
+
+        internal ComputeBuffer GetWeightsBuffer()
+        {
+            return bufferPool.GetWeightsBuffer();
+        }
+
+        internal OvrComputeBufferPool.EntryWeights GetNextEntryWeights(int numMorphTargets)
+        {
+            return bufferPool.GetNextEntryWeights(numMorphTargets);
         }
     }
 }

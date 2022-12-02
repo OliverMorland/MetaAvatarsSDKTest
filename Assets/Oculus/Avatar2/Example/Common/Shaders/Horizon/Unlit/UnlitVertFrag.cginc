@@ -24,6 +24,7 @@ void AvatarShaderUnlitVertProgramTransform(appdata v, inout v2f o) {
 
   o.propertiesMapUV.xy = v.uv.xy;
   o.effectsMapUV.xy = v.uv.xy;
+  o.ormt = v.ormt;
 }
 
 #define GENERATE_AVATAR_SHADER_UNLIT_DEFAULT_VERT_PROGRAM(VertProgName) \

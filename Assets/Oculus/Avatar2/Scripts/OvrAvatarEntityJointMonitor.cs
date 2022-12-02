@@ -1,6 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+
+using Oculus.Skinning.GpuSkinning;
+
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -9,6 +12,8 @@ namespace Oculus.Avatar2
     internal interface IJointData
     {
         Transform JointTransform { get; }
+
+        bool TryGetPosAndOrientation(out Vector3 pos, out Quaternion quat);
 
         void Dispose();
     }
@@ -24,15 +29,32 @@ namespace Oculus.Avatar2
 
         protected abstract string LogScope { get; }
 
+        private bool TryGetJointData(CAPI.ovrAvatar2JointType jointType, out T jointData)
+        {
+            return _jointsToData.TryGetValue(jointType, out jointData);
+        }
+
         public bool TryGetTransform(CAPI.ovrAvatar2JointType jointType, out Transform tx)
         {
-            if (_jointsToData.TryGetValue(jointType, out var jointData) && IsJointDataValid(jointData))
+            if (TryGetJointData(jointType, out var jointData) && IsJointDataValid(jointData))
             {
                 tx = jointData.JointTransform;
                 return true;
             }
 
             tx = null;
+            return false;
+        }
+
+        public bool TryGetPositionAndOrientation(CAPI.ovrAvatar2JointType jointType, out Vector3 pos
+            , out Quaternion rot)
+        {
+            if (TryGetJointData(jointType, out var jointData) && jointData.TryGetPosAndOrientation(out pos, out rot))
+            {
+                return true;
+            }
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
             return false;
         }
 
@@ -179,6 +201,19 @@ namespace Oculus.Avatar2
             JointTransform = tx;
         }
 
+        public bool TryGetPosAndOrientation(out Vector3 pos, out Quaternion quat)
+        {
+            if (JointTransform == null)
+            {
+                pos = Vector3.zero;
+                quat = Quaternion.identity;
+                return false;
+            }
+            pos = JointTransform.localPosition;
+            quat = JointTransform.localRotation;
+            return true;
+        }
+
         public void Dispose()
         {
             Object.Destroy(JointTransform.gameObject);
@@ -223,12 +258,20 @@ namespace Oculus.Avatar2
         private Quaternion _objectSpaceOrientation0;
         private Quaternion _objectSpaceOrientation1;
 
+        private float _lastInterpolationValue = 0.0f;
+
         public InterpolatingJoint(Transform tx)
         {
             JointTransform = tx;
         }
 
         public Transform JointTransform { get; private set; }
+
+        public bool TryGetPosAndOrientation(out Vector3 pos, out Quaternion quat)
+        {
+            CalculateUpdate(_lastInterpolationValue, out pos, out quat);
+            return true;
+        }
 
         public void Dispose()
         {
@@ -257,6 +300,8 @@ namespace Oculus.Avatar2
 
         public void UpdateTransform(float interpolationValue)
         {
+            _lastInterpolationValue = interpolationValue;
+
             CalculateUpdate(interpolationValue, out var pos, out var rot);
             JointTransform.localPosition = pos;
             JointTransform.localRotation = rot;

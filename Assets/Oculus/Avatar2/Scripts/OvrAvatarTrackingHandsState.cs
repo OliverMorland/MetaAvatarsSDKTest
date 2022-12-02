@@ -20,6 +20,12 @@ namespace Oculus.Avatar2
         /// Array of rotations for the hand bones.
         public readonly CAPI.ovrAvatar2Quatf[] boneRotations = new CAPI.ovrAvatar2Quatf[(int)CAPI.MaxHandBones];
 
+        /// Tracked uniform scale for the left hand.
+        public float handScaleLeft;
+
+        /// Tracked uniform scale for the right hand.
+        public float handScaleRight;
+
         /// True if the left hand is being tracked.
         public bool isTrackedLeft;
 
@@ -43,6 +49,8 @@ namespace Oculus.Avatar2
             {
                 wristPosLeft = wristPosLeft,
                 wristPosRight = wristPosRight,
+                handScaleLeft = handScaleLeft,
+                handScaleRight = handScaleRight,
                 isTrackedLeft = isTrackedLeft,
                 isTrackedRight = isTrackedRight,
                 isConfidentLeft = isConfidentLeft,
@@ -93,6 +101,8 @@ namespace Oculus.Avatar2
         {
             wristPosLeft = native.wristPosLeft;
             wristPosRight = native.wristPosRight;
+            handScaleLeft = native.handScaleLeft;
+            handScaleRight = native.handScaleRight;
             isTrackedLeft = native.isTrackedLeft;
             isTrackedRight = native.isTrackedRight;
             isConfidentLeft = native.isConfidentLeft;

@@ -1,10 +1,10 @@
 ﻿Shader "Venues/Environment/CheapoPBR"
 {
-    Properties
-    {
+	Properties
+	{
 		_Color ("Color Tint", Color) = (1, 1, 1, 1)
 		[NoScaleOffset] _MainTex ("Base Texture || (A) for Metallic", 2D) = "white" {}
-		
+
 		_Metallic ("Global Metallic", Range(0, 1)) = 0.0
 		_Roughness ("Global Roughness", Range(0, 1)) = 0.5
 
@@ -26,53 +26,55 @@
 		_RimWidth ("Rim Width", Range(0, 1)) = 0.4
 		_RimWeight ("Rim Weight", Range(0.0001, 2)) = 0.55
 
-    }
-    SubShader
-    {
-        // Use this with Universal Rendering Pipeline (URP)
-        // Tags{ "RenderType"="Opaque" "LightMode" = "LightweightForward"}
-        // Use this without Universal Rendering Pipeline (URP)
-        Tags { "RenderType"="Opaque" "LightMode" = "ForwardBase"}
+	}
+	SubShader
+	{
+		// Use this with Universal Rendering Pipeline (URP)
+		// Tags{ "RenderType"="Opaque" "LightMode" = "LightweightForward"}
+		// Use this without Universal Rendering Pipeline (URP)
+		Tags { "RenderType"="Opaque" "LightMode" = "ForwardBase"}
 
-        Pass
-        {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
+		Pass
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
 			#pragma multi_compile_fog
-            
+
 			#include "UnityCG.cginc"
 
-			#pragma shader_feature ENABLE_EMISSION 
-			#pragma shader_feature ENABLE_AMBIENT 
+			#pragma shader_feature ENABLE_EMISSION
+			#pragma shader_feature ENABLE_AMBIENT
 			#pragma shader_feature ENABLE_REFLECTIONS
 			#pragma shader_feature ENABLE_FOG
 
-            struct appdata
-            {
-                half4 vertex : POSITION;
+			struct appdata
+			{
+				half4 vertex : POSITION;
 				half2 uv : TEXCOORD0;
 				half3 normal : NORMAL;
 				half4 vertColor : COLOR;
-            };
+				UNITY_VERTEX_INPUT_INSTANCE_ID
+			};
 
-            struct v2f
-            {
-                half2 uv : TEXCOORD0;
-                half4 vertex : SV_POSITION;
+			struct v2f
+			{
+				half2 uv : TEXCOORD0;
+				half4 vertex : SV_POSITION;
 				half4 vertColor : COLOR;
 				half3 reflection : TEXCOORD1;
 				half3 rim : TEXCOORD2;
 				UNITY_FOG_COORDS(3)
+				UNITY_VERTEX_OUTPUT_STEREO
 			};
 
 			half4 _Color;
 			sampler2D _MainTex;
-			
+
 			#if ENABLE_EMISSION
 				sampler2D _EmissionTex;
 			#endif
-			
+
 			#if ENABLE_REFLECTIONS
 				UNITY_DECLARE_TEXCUBE(_ReflectionCubemap);
 			#endif
@@ -84,11 +86,14 @@
 			half _RimWidth, _RimWeight;
 
 
-            v2f vert (appdata v)
-            {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
+			v2f vert (appdata v)
+			{
+				v2f o;
+				UNITY_SETUP_INSTANCE_ID(v);
+				UNITY_INITIALIZE_OUTPUT(v2f, o);
+				UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+				o.vertex = UnityObjectToClipPos(v.vertex);
+				o.uv = v.uv;
 
 				// Vertex color & tint
 				o.vertColor = v.vertColor * _Color;
@@ -104,7 +109,7 @@
 					// Probes for video illumination
 					o.vertColor.rgb *= ShadeSH9(float4(worldNormal, 1)) * _AmbientIntensity;
 				#endif
-				
+
 				// Rim
 				o.rim = pow(smoothstep(_RimWidth, 0, dot(worldNormal, worldViewDir)), 1 / _RimWeight);
 				o.rim *= _RimColor;
@@ -114,10 +119,10 @@
 				#endif
 
 				return o;
-            }
+			}
 
-            fixed4 frag (v2f i) : SV_Target
-            {
+			fixed4 frag (v2f i) : SV_Target
+			{
 				// Main Texture
 				fixed4 mainTex = tex2D(_MainTex, i.uv);
 				fixed3 col = mainTex.rgb;
@@ -130,14 +135,14 @@
 
 				// Vertex color, tint, & ambient probes, metallic overrides all
 				col *= lerp(i.vertColor.rgb, 1, _Metallic);
-				
+
 				// Reflections & Rim Light
 				half3 rimMultiplier = half3(1., 1., 1.);
 				#if ENABLE_REFLECTIONS
-					half4 refl = UNITY_SAMPLE_TEXCUBE_LOD(_ReflectionCubemap, i.reflection, _Roughness * 6); 
+					half4 refl = UNITY_SAMPLE_TEXCUBE_LOD(_ReflectionCubemap, i.reflection, _Roughness * 6);
 					col = lerp(col, col * (refl.rgb * _ReflectionIntensity), (_Metallic * 0.75) + 0.25);
 					rimMultiplier = refl.rgb;
-				#endif				
+				#endif
 				col += i.rim * (1.2 - _Roughness) * rimMultiplier;
 
 				// Emission
@@ -151,8 +156,8 @@
 				#endif
 
 				return fixed4(col, 1);
-            }
-            ENDCG
-        }
-    }
+			}
+			ENDCG
+		}
+	}
 }

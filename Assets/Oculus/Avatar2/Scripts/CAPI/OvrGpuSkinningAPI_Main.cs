@@ -16,7 +16,7 @@ namespace Oculus.Avatar2
         // enum only used for type-safety
         public enum ovrGpuSkinningHandle : Int32 { AtlasPackerId_Invalid = -1 };
 
-        public enum ovrGpuSkinningEncodingPrecision : Int32 { ENCODING_PRECISION_FLOAT, ENCODING_PRECISION_HALF, ENCODING_PRECISION_10_10_10_2 };
+        public enum ovrGpuSkinningEncodingPrecision : Int32 { ENCODING_PRECISION_FLOAT, ENCODING_PRECISION_HALF, ENCODING_PRECISION_10_10_10_2, ENCODING_PRECISION_UINT16, ENCODING_PRECISION_UINT8 };
 
         // Result codes for GpuSkinning CAPI methods
         [System.Flags]
@@ -44,6 +44,13 @@ namespace Oculus.Avatar2
         public struct ovrGpuSkinningTextureDesc
         {
             public UInt32 width, height, dataSize;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ovrGpuSkinningBufferDesc
+        {
+            public UInt32 dataSize, numVerts;
+            public ovrGpuSkinningEncodingPrecision precision;
         }
 
         //-----------------------------------------------------------------
@@ -111,6 +118,32 @@ namespace Oculus.Avatar2
             public readonly ovrAvatar2Vector3f positionRange;
             public readonly ovrAvatar2Vector3f normalRange;
             public readonly ovrAvatar2Vector3f tangentRange;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public readonly struct ovrGpuMorphTargetBufferDesc
+        {
+            public readonly UInt32 bufferDataSize;
+            public readonly UInt32 numMorphedVerts;
+
+            public readonly ovrAvatar2Vector3f positionScale;
+            public readonly ovrAvatar2Vector3f normalScale;
+            public readonly ovrAvatar2Vector3f tangentScale;
+
+            public readonly UInt32 numMorphedVertsFourJoints;
+            public readonly UInt32 numMorphedVertsThreeJoints;
+            public readonly UInt32 numMorphedVertsTwoJoints;
+            public readonly UInt32 numMorphedVertsOneJoint;
+            public readonly UInt32 numMorphedVertsNoJoints;
+
+            public readonly UInt32 numVertsFourJointsOnly;
+            public readonly UInt32 numVertsThreeJointsOnly;
+            public readonly UInt32 numVertsTwoJointsOnly;
+            public readonly UInt32 numVertsOneJointOnly;
+            public readonly UInt32 numVertsNoJointsOrMorphs;
+
+            public readonly UInt32 numMorphTargets;
+            public readonly ovrGpuSkinningEncodingPrecision encodingPrecision;
         }
 
         public static ovrGpuMorphTargetTextureDesc OvrGpuSkinning_MorphTargetEncodeMeshVertToAffectedVert(
@@ -198,6 +231,101 @@ namespace Oculus.Avatar2
                     morphTargetDesc, (Int32*)meshVertToAffectedVert, texType
                     , deltaPositionsArray, deltaNormalsArray, deltaTangentsArray, (byte*)resultBuffer)
                     .EnsureSuccess("OvrGpuSkinning_GpuMorphTargetTextureInfoCreateTextureData");
+            }
+        }
+
+        public static ovrGpuMorphTargetBufferDesc OvrGpuSkinning_MorphTargetGetTextureBufferMetaData(
+            UInt32 numMeshVerts,
+            UInt32 numMorphTargets,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            IntPtr deltaPositionsArray, // ovrAvatar2Vector3f**
+            IntPtr deltaNormalsArray,    // ovrAvatar2Vector3f**
+            IntPtr jointWeights, // float*
+            IntPtr vertexIndexReordering // UInt16*
+        )
+        {
+            unsafe
+            {
+                if (ovrGpuSkinning_MorphTargetGetBufferMetaData(
+                        numMeshVerts,
+                        numMorphTargets,
+                        encodingPrecision,
+                        deltaPositionsArray,
+                        deltaNormalsArray,
+                        jointWeights,
+                        (UInt16*)vertexIndexReordering,
+                        out var newBufferDesc)
+                    .EnsureSuccess("ovrGpuSkinning_MorphTargetGetBufferMetaData"))
+                {
+                    return newBufferDesc;
+                }
+            }
+
+            return new ovrGpuMorphTargetBufferDesc();
+        }
+
+        public static ovrGpuMorphTargetBufferDesc OvrGpuSkinning_MorphTargetGetTextureBufferMetaDataWithTangents(
+            UInt32 numMeshVerts,
+            UInt32 numMorphTargets,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            IntPtr deltaPositionsArray, // ovrAvatar2Vector3f**
+            IntPtr deltaNormalsArray,   // ovrAvatar2Vector3f**
+            IntPtr deltaTangentsArray,  // ovrAvatar2Vector3f**
+            IntPtr jointWeights, // float*
+            IntPtr vertexIndexReordering // UInt16*
+        )
+        {
+            unsafe
+            {
+                if (ovrGpuSkinning_MorphTargetGetBufferMetaDataWithTangents(
+                        numMeshVerts,
+                        numMorphTargets,
+                        encodingPrecision,
+                        deltaPositionsArray,
+                        deltaNormalsArray,
+                        deltaTangentsArray,
+                        jointWeights,
+                        (UInt16*)vertexIndexReordering,
+                        out var newBufferDesc)
+                    .EnsureSuccess("ovrGpuSkinning_MorphTargetGetBufferMetaDataWithTangents"))
+                {
+                    return newBufferDesc;
+                }
+            }
+
+            return new ovrGpuMorphTargetBufferDesc();
+        }
+
+        public static bool OvrGpuSkinning_MorphTargetEncodeBufferData(
+            in ovrGpuMorphTargetBufferDesc morphTargetDesc,
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr deltaPositionsArray, // ovrAvatar2Vector3f**
+            IntPtr deltaNormalsArray,   // ovrAvatar2Vector3f**
+            IntPtr resultBuffer
+        )
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_MorphTargetEncodeBufferData(
+                        morphTargetDesc, (UInt16*)vertexIndexReordering, deltaPositionsArray, deltaNormalsArray, (byte*)resultBuffer)
+                    .EnsureSuccess("OvrGpuSkinning_MorphTargetEncodeBufferData");
+            }
+        }
+
+        public static bool OvrGpuSkinning_MorphTargetEncodeBufferDataWithTangents(
+            in ovrGpuMorphTargetBufferDesc morphTargetDesc,
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr deltaPositionsArray, // ovrAvatar2Vector3f**
+            IntPtr deltaNormalsArray,   // ovrAvatar2Vector3f**
+            IntPtr deltaTangentsArray,  // ovrAvatar2Vector3f**
+            IntPtr resultBuffer
+        )
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_MorphTargetEncodeBufferDataWithTangents(
+                        morphTargetDesc, (UInt16*)vertexIndexReordering, deltaPositionsArray, deltaNormalsArray, deltaTangentsArray, (byte*)resultBuffer)
+                    .EnsureSuccess("OvrGpuSkinning_MorphTargetEncodeBufferDataWithTangents");
             }
         }
 
@@ -341,6 +469,69 @@ namespace Oculus.Avatar2
                 return (ovrGpuSkinning_JointEncodeTextureData(in desc, numMeshVerts
                     , (ovrAvatar2Vector4us*)jointIndices, (ovrAvatar2Vector4f*)jointWeights, (byte*)resultBuffer, resultBufferSize)
                     .EnsureSuccess("ovrGpuSkinning_JointEncodeTextureData"));
+            }
+        }
+
+        public static ovrGpuSkinningBufferDesc OvrGpuSkinning_JointWeightsBufferDesc(
+            UInt32 numMeshVerts
+        )
+        {
+            if (ovrGpuSkinning_JointWeightsBufferDesc(numMeshVerts, out var bufferDesc)
+                .EnsureSuccess("ovrGpuSkinning_JointWeightsBufferDesc"))
+            {
+                return bufferDesc;
+            }
+
+            return default;
+        }
+
+
+        public static ovrGpuSkinningBufferDesc OvrGpuSkinning_JointIndicesBufferDesc(
+            UInt32 numMeshVerts, ovrGpuSkinningEncodingPrecision encodingPrecision
+        )
+        {
+            if (ovrGpuSkinning_JointIndicesBufferDesc(numMeshVerts, encodingPrecision, out var bufferDesc)
+                .EnsureSuccess("ovrGpuSkinning_JointIndicesBufferDesc"))
+            {
+                return bufferDesc;
+            }
+
+            return default;
+        }
+
+        public static bool OvrGpuSkinning_EncodeJointWeightsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ IntPtr jointWeights, // ovrAvatar2Vector4f[]
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr resultBuffer // byte*
+        )
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_EncodeJointWeightsBufferData(
+                        desc,
+                        (ovrAvatar2Vector4f*)jointWeights,
+                        (UInt16*)vertexIndexReordering,
+                        (byte*)resultBuffer)
+                    .EnsureSuccess("ovrGpuSkinning_EncodeJointWeightsBufferData");
+            }
+        }
+
+        public static bool OvrGpuSkinning_EncodeJointIndicesBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ IntPtr jointIndices, // ovrAvatar2Vector4us[]
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr resultBuffer // byte*
+        )
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_EncodeJointIndicesBufferData(
+                        desc,
+                        (ovrAvatar2Vector4us*)jointIndices,
+                        (UInt16*)vertexIndexReordering,
+                        (byte*)resultBuffer)
+                    .EnsureSuccess("ovrGpuSkinning_EncodeJointIndicesBufferData");
             }
         }
 
@@ -506,6 +697,105 @@ namespace Oculus.Avatar2
             }
         }
 
+        public static ovrGpuSkinningBufferDesc OvrGpuSkinning_NeutralPositionsBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision)
+        {
+            if (ovrGpuSkinning_NeutralPositionsBufferDesc(
+                    numMeshVerts,
+                    encodingPrecision,
+                    out var newDesc)
+                .EnsureSuccess("ovrGpuSkinning_NeutralPositionsBufferDesc"))
+            {
+                return newDesc;
+            }
+
+            return default;
+        }
+
+        public static ovrGpuSkinningBufferDesc OvrGpuSkinning_NeutralNormalsBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision)
+        {
+            if (ovrGpuSkinning_NeutralNormalsBufferDesc(
+                    numMeshVerts,
+                    encodingPrecision,
+                    out var newDesc)
+                .EnsureSuccess("ovrGpuSkinning_NeutralNormalsBufferDesc"))
+            {
+                return newDesc;
+            }
+
+            return default;
+        }
+
+        public static ovrGpuSkinningBufferDesc OvrGpuSkinning_NeutralTangentsBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision)
+        {
+            if (ovrGpuSkinning_NeutralTangentsBufferDesc(
+                    numMeshVerts,
+                    encodingPrecision,
+                    out var newDesc)
+                .EnsureSuccess("ovrGpuSkinning_NeutralTangentsBufferDesc"))
+            {
+                return newDesc;
+            }
+
+            return default;
+        }
+
+        public static bool OvrGpuSkinning_EncodeNeutralPositionsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ IntPtr neutralPositions, // ovrAvatar2Vector3f*
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr resultBuffer) // byte*
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_EncodeNeutralPositionsBufferData(
+                        desc,
+                        (ovrAvatar2Vector3f*)neutralPositions,
+                        (UInt16*)vertexIndexReordering,
+                        (byte*)resultBuffer)
+                    .EnsureSuccess("ovrGpuSkinning_EncodeNeutralPositionsBufferData");
+            }
+        }
+
+        public static bool OvrGpuSkinning_EncodeNeutralNormalsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ IntPtr neutralNormals, // ovrAvatar2Vector3f*
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr resultBuffer) // byte*
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_EncodeNeutralNormalsBufferData(
+                        desc,
+                        (ovrAvatar2Vector3f*)neutralNormals,
+                        (UInt16*)vertexIndexReordering,
+                        (byte*)resultBuffer)
+                    .EnsureSuccess("ovrGpuSkinning_EncodeNeutralNormalsBufferData");
+            }
+        }
+
+        public static bool OvrGpuSkinning_EncodeNeutralTangentsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ IntPtr neutralTangents, // ovrAvatar2Vector4f*
+            /* const */ IntPtr vertexIndexReordering, // UInt16*
+            IntPtr resultBuffer) // byte*
+        {
+            unsafe
+            {
+                return ovrGpuSkinning_EncodeNeutralTangentsBufferData(
+                        desc,
+                        (ovrAvatar2Vector4f*)neutralTangents,
+                        (UInt16*)vertexIndexReordering,
+                        (byte*)resultBuffer)
+                    .EnsureSuccess("ovrGpuSkinning_EncodeNeutralTangentsBufferData");
+            }
+        }
+
         //-----------------------------------------------------------------
         //
         // GpuSkinningJointTextureInfo
@@ -603,6 +893,46 @@ namespace Oculus.Avatar2
             /* const */ IntPtr deltaTangentsArray,    // ovrAvatar2Vector3f**
             byte* result
         );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_MorphTargetGetBufferMetaData(
+            UInt32 numMeshVerts,
+            UInt32 numMorphTargets,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            /* const */ IntPtr deltaPositionsArray,
+            /* const */ IntPtr deltaNormalsArray,
+            /* const */ IntPtr jointWeights,
+            UInt16* vertexIndexReordering,
+            out ovrGpuMorphTargetBufferDesc newMorphTargetInfo);
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_MorphTargetGetBufferMetaDataWithTangents(
+            UInt32 numMeshVerts,
+            UInt32 numMorphTargets,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            /* const */ IntPtr deltaPositionsArray,
+            /* const */ IntPtr deltaNormalsArray,
+            /* const */ IntPtr deltaTangentsArray,
+            /* const */ IntPtr jointWeights,
+            UInt16* vertexIndexReordering,
+            out ovrGpuMorphTargetBufferDesc newMorphTargetInfo);
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_MorphTargetEncodeBufferData(
+            /* const */ in ovrGpuMorphTargetBufferDesc morphTargetInfo,
+            /* const */ UInt16* vertexIndexReordering,
+            /* const */ IntPtr deltaPositionsArray,
+            /* const */ IntPtr deltaNormalsArray,
+            byte* result);
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_MorphTargetEncodeBufferDataWithTangents(
+            /* const */ in ovrGpuMorphTargetBufferDesc morphTargetInfo,
+            /* const */ UInt16* vertexIndexReordering,
+            /* const */ IntPtr deltaPositionsArray,
+            /* const */ IntPtr deltaNormalsArray,
+            /* const */ IntPtr deltaTangentsArray,
+            byte* result);
 
         //-----------------------------------------------------------------
         //
@@ -703,6 +1033,51 @@ namespace Oculus.Avatar2
             UInt32 resultBufferSize
         );
 
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrGpuSkinningResult ovrGpuSkinning_NeutralPositionsBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            out ovrGpuSkinningBufferDesc bufferDesc
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrGpuSkinningResult ovrGpuSkinning_NeutralNormalsBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            out ovrGpuSkinningBufferDesc bufferDesc
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrGpuSkinningResult ovrGpuSkinning_NeutralTangentsBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            out ovrGpuSkinningBufferDesc bufferDesc
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_EncodeNeutralPositionsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ ovrAvatar2Vector3f* neutralPositions,
+            /* const */ UInt16* vertexIndexReordering,
+            byte* resultBuffer
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_EncodeNeutralNormalsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ ovrAvatar2Vector3f* neutralNormals,
+            /* const */ UInt16* vertexIndexReordering,
+            byte* resultBuffer
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_EncodeNeutralTangentsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ ovrAvatar2Vector4f* neutralTangents,
+            /* const */ UInt16* vertexIndexReordering,
+            byte* resultBuffer
+        );
+
         //-----------------------------------------------------------------
         //
         // GpuSkinningJointEncoder
@@ -716,14 +1091,44 @@ namespace Oculus.Avatar2
         );
 
         [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
-        private unsafe static extern ovrGpuSkinningResult ovrGpuSkinning_JointEncodeTextureData(
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_JointEncodeTextureData(
             in ovrGpuSkinningTextureDesc desc,
             UInt32 numMeshVerts,
-            /* const */ ovrAvatar2Vector4us* jointIndices, // ovrAvatar2Vector4us[]
-            /* const */ ovrAvatar2Vector4f* jointWeights,  // ovrAvatar2Vector4f[]
+            /* const */ ovrAvatar2Vector4us* jointIndices,
+            /* const */ ovrAvatar2Vector4f* jointWeights,
             byte* resultBuffer,
             UInt32 resultBufferSize
         );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrGpuSkinningResult ovrGpuSkinning_JointWeightsBufferDesc(
+            UInt32 numMeshVerts,
+            out ovrGpuSkinningBufferDesc bufferDesc
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ovrGpuSkinningResult ovrGpuSkinning_JointIndicesBufferDesc(
+            UInt32 numMeshVerts,
+            ovrGpuSkinningEncodingPrecision encodingPrecision,
+            out ovrGpuSkinningBufferDesc bufferDesc
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_EncodeJointWeightsBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ ovrAvatar2Vector4f* jointWeights,  // ovrAvatar2Vector4f[]
+            /* const */ UInt16* vertexIndexReordering,
+            byte* resultBuffer
+        );
+
+        [DllImport(GpuSkinningLibFile, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ovrGpuSkinningResult ovrGpuSkinning_EncodeJointIndicesBufferData(
+            in ovrGpuSkinningBufferDesc desc,
+            /* const */ ovrAvatar2Vector4us* jointIndices, // ovrAvatar2Vector4us[]
+            /* const */ UInt16* vertexIndexReordering,
+            byte* resultBuffer
+        );
+
 
         #endregion // extern methods
     }

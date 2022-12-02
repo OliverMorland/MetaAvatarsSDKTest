@@ -1,15 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Oculus.Avatar2
-{
-    public partial class CAPI
-    {
-        internal const string InternalLibFile = LibFile;
-    }
-}
-
-namespace Oculus.Avatar2.External
+namespace Oculus.Avatar2.Experimental
 {
     using EntityPtr = IntPtr;
     /* Pointer to pinned float[] */
@@ -23,33 +15,36 @@ namespace Oculus.Avatar2.External
     /* Pointer to pinned ovrAvatar2AnimationParameterId[]*/
     using ParameterIdArrayPtr = IntPtr;
 
+    using ovrAvatar2Id = Avatar2.CAPI.ovrAvatar2Id;
+    using ovrAvatar2Result = Avatar2.CAPI.ovrAvatar2Result;
+    using ovrAvatar2EntityId = Avatar2.CAPI.ovrAvatar2EntityId;
+
 #pragma warning disable CA1401 // P/Invokes should not be visible
 #pragma warning disable IDE1006 // Naming Styles
-    public partial class InternalCAPI
+    public partial class CAPI
     {
-        private const string LibFile = CAPI.InternalLibFile;
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_LoadAnimHierarchy(
-    IntPtr data, UInt32 size, out CAPI.ovrAvatar2Id assetId);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Asset_LoadAnimHierarchy(
+    IntPtr data, UInt32 size, out ovrAvatar2Id assetId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_UnloadAnimHierarchy(CAPI.ovrAvatar2Id assetId);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Asset_UnloadAnimHierarchy(ovrAvatar2Id assetId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetAnimHierarchy(
-            CAPI.ovrAvatar2Id assetId,
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetAnimHierarchy(
+            ovrAvatar2Id assetId,
             OvrAnimHierarchyPtr hierarchyAsset);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_LoadAnimClip(
-            IntPtr data, UInt32 size, out CAPI.ovrAvatar2Id assetId);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Asset_LoadAnimClip(
+            IntPtr data, UInt32 size, out ovrAvatar2Id assetId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_UnloadAnimClip(CAPI.ovrAvatar2Id assetId);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Asset_UnloadAnimClip(ovrAvatar2Id assetId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Asset_GetAnimClip(
-            CAPI.ovrAvatar2Id assetId, ref ovrAvatar2AnimClipAsset outClipAsset);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Asset_GetAnimClip(
+            ovrAvatar2Id assetId, ref ovrAvatar2AnimClipAsset outClipAsset);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct ovrAvatar2SampleAnimationClipParams
@@ -61,36 +56,36 @@ namespace Oculus.Avatar2.External
             public IntPtr floatChannels; // float[]
         }
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_SampleAnimationClip(
-            CAPI.ovrAvatar2Id clipAssetId,
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_SampleAnimationClip(
+            ovrAvatar2Id clipAssetId,
             // TODO: Pass as `in` pointer
             ovrAvatar2SampleAnimationClipParams sampleParams);
 
         /// Assets
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_SetMood(
-            CAPI.ovrAvatar2EntityId entityId, ovrAvatar2Mood desiredMood);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_SetMood(
+            ovrAvatar2EntityId entityId, ovrAvatar2Mood desiredMood);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_GetMood(
-            CAPI.ovrAvatar2EntityId entityId, out ovrAvatar2Mood currentMood);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_GetMood(
+            ovrAvatar2EntityId entityId, out ovrAvatar2Mood currentMood);
 
         /// Loads an animation state machine definition asset from memory.
         /// \param the json data
         /// \param result id of the loaded asset
         /// \return result code
         ///
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_LoadAnimStateMachineDefinitionFromJson(
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_LoadAnimStateMachineDefinitionFromJson(
             string json, out ovrAvatar2AnimationStateMachineDefinitionId outAssetId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_GetHierarchyId(CAPI.ovrAvatar2EntityId entityId, out ovrAvatar2AnimationHierarchyId outHierarchyId);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_GetHierarchyId(ovrAvatar2EntityId entityId, out ovrAvatar2AnimationHierarchyId outHierarchyId);
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_CreateMask(
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_CreateMask(
             ovrAvatar2AnimationId hierarchyAssetId,
             string name,
             [In] string[] includedJoints,
@@ -101,85 +96,85 @@ namespace Oculus.Avatar2.External
 
         // Layers
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_SetLayerWeight(MixerLayerPtr mixerLayer, float weight);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_SetLayerWeight(MixerLayerPtr mixerLayer, float weight);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_DestroyLayer(MixerLayerPtr mixerLayer);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_DestroyLayer(MixerLayerPtr mixerLayer);
 
 
         // State layer
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_GetParameterId(string paramName, out ovrAvatar2AnimationParameterId paramId);
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_GetParameterId(string paramName, out ovrAvatar2AnimationParameterId paramId);
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_GetStateId(string stateName, out ovrAvatar2AnimationStateId paramId);
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_GetStateId(string stateName, out ovrAvatar2AnimationStateId paramId);
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_GetTransitionId(string transitionName, out ovrAvatar2AnimationTransitionId paramId);
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_GetTransitionId(string transitionName, out ovrAvatar2AnimationTransitionId paramId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_CreateStateLayer(
-            CAPI.ovrAvatar2EntityId entityId,
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_CreateStateLayer(
+            ovrAvatar2EntityId entityId,
             ovrAvatar2AnimationStateMachineDefinitionId stateMachineId,
             int priority,
             ovrAvatar2AnimationBlendMode blendMode,
             out MixerLayerPtr layer);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_StateLayerSetFloatParameter(
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_StateLayerSetFloatParameter(
             MixerLayerPtr mixerLayer, ovrAvatar2AnimationParameterId param, float value);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_StateLayerSetFloatParameters(
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_StateLayerSetFloatParameters(
             MixerLayerPtr mixerLayer, int numParams, ParameterIdArrayPtr paramIds, FloatArrayPtr values);
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_StateLayerSetNameParameter(
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_StateLayerSetNameParameter(
             MixerLayerPtr mixerLayer, ovrAvatar2AnimationParameterId param, string name);
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_StateLayerSetNameParameters(
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_StateLayerSetNameParameters(
             MixerLayerPtr mixerLayer, int numParams, ParameterIdArrayPtr paramIds, [In] string[] names);
 
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_StateLayerRequestTransition(
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_StateLayerRequestTransition(
             MixerLayerPtr mixerLayer, ovrAvatar2AnimationTransitionId transitionId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_StateLayerRequestFadeToState(
-            MixerLayerPtr mixerLayer, ovrAvatar2AnimationTransitionId transitionId, float transitionTimeSec);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_StateLayerRequestFadeToState(
+            MixerLayerPtr mixerLayer, ovrAvatar2AnimationStateId transitionId, float transitionTimeSec);
 
 
         /// Clip Layer
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_ClipLayerCreate(
-            CAPI.ovrAvatar2EntityId entityId, int priority, out MixerLayerPtr newLayer);
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_ClipLayerCreate(
+            ovrAvatar2EntityId entityId, int priority, out MixerLayerPtr newLayer);
 
-        [DllImport(LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetClipByName(
+        [DllImport(Avatar2.CAPI.LibFile, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetClipByName(
             MixerLayerPtr mixerLayer, string animName);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetClipById(
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetClipById(
             MixerLayerPtr mixerLayer, ovrAvatar2AnimationClipId animId);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetRate(
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetRate(
             MixerLayerPtr mixerLayer, float rate);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetPhase(
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_ClipLayerSetPhase(
             MixerLayerPtr mixerLayer, float phase);
 
         /// Viseme Layer
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result ovrAvatar2Animation_CreateVisemeLayer(
-            CAPI.ovrAvatar2EntityId entityId,
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result ovrAvatar2Animation_CreateVisemeLayer(
+            ovrAvatar2EntityId entityId,
             in ovrAvatar2AnimVisemeLayerParams visemeParams,
             int numVisemeAnims,
             [In] string[] visemeAnimNames,
@@ -188,24 +183,24 @@ namespace Oculus.Avatar2.External
 
         /// Ik Layer
         ///
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result
            ovrAvatar2Animation_CreateIkLayer(
-               CAPI.ovrAvatar2EntityId entityId,
+               ovrAvatar2EntityId entityId,
                int priority,
                out MixerLayerPtr layer);
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result
            ovrAvatar2Animation_CreateIkLayerFromParams(
-                CAPI.ovrAvatar2EntityId entityId,
+                ovrAvatar2EntityId entityId,
                 int priority,
                 in ovrAvatar2AnimationIkLayerParams parameters,
                 out MixerLayerPtr layer);
 
 
-        [DllImport(LibFile, CallingConvention = CallingConvention.Cdecl)]
-        public static extern CAPI.ovrAvatar2Result
+        [DllImport(Avatar2.CAPI.LibFile, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ovrAvatar2Result
             ovrAvatar2Animation_IkLayerSetTargetWeight(
                 MixerLayerPtr layer,
                 ovrAvatar2AnimationIkTarget target,

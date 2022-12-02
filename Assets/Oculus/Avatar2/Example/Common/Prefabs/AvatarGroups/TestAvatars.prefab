@@ -79,35 +79,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f775fcfeef42d0543abbd1e03dfe74fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _loadUserFromCdn: 1
   _creationInfo:
     features: 338
-    quality: 0
-    lodFlags: -1
-    manifestationFlags: 2
-    viewFlags: 2
+    renderFilters:
+      lodFlags: 31
+      manifestationFlags: 2
+      viewFlags: 3
+      subMeshInclusionFlags: 2047
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 2047
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 0}
   _lipSync: {fileID: 0}
-  _criticalJointNames: []
-  _debugDrawTrackingPose: 0
+  _criticalJointTypes: 
+  _debugDrawing:
+    drawTrackingPose: 0
+    drawBoneNames: 0
+    drawSkelHierarchy: 0
+    drawSkelHierarchyInGame: 0
+    drawSkinTransformsInGame: 0
+    drawCriticalJoints: 0
+    skeletonColor: {r: 1, g: 0, b: 0, a: 1}
   LoadingStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _useAdvancedLodSystem: 1
+  EntityLoadingStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnCreatedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSkeletonLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDefaultAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnUserAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  PreTeardownEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLoadFailedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   SkinningType: 0
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _assetSource: 0
-  _assetPaths: []
-  _assetPostfixDefault: /RiftAll.glb
-  _assetPostfixAndroid: /QuestAll.glb
-  _debugDrawBoneNames: 0
-  _debugDrawSkelHierarchy: 0
-  _debugSkeletonColor: {r: 1, g: 0, b: 0, a: 1}
+  _highQuality: 0
+  _loadUserFromCdn: 1
+  _deferLoading: 0
+  _assets:
+  - source: 0
+    path: 0
+  _underscorePostfix: 1
+  _overridePostfix: 
+  _autoCdnRetry: 1
+  _autoCheckChanges: 0
+  _changeCheckInterval: 8
   _debugDrawGazePos: 0
+  _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
+  _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
   shaderDesatBlend_: 0
   shaderSolidColor_: {r: 0.12941177, g: 0.19607843, b: 0.3882353, a: 0}
@@ -154,36 +190,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f775fcfeef42d0543abbd1e03dfe74fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _loadUserFromCdn: 0
   _creationInfo:
     features: 338
-    quality: 0
-    lodFlags: -1
-    manifestationFlags: 2
-    viewFlags: 2
+    renderFilters:
+      lodFlags: 31
+      manifestationFlags: 2
+      viewFlags: 3
+      subMeshInclusionFlags: 2047
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 2047
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 0}
   _lipSync: {fileID: 0}
-  _criticalJointNames: []
-  _debugDrawTrackingPose: 0
+  _criticalJointTypes: 
+  _debugDrawing:
+    drawTrackingPose: 0
+    drawBoneNames: 0
+    drawSkelHierarchy: 0
+    drawSkelHierarchyInGame: 0
+    drawSkinTransformsInGame: 0
+    drawCriticalJoints: 0
+    skeletonColor: {r: 1, g: 0, b: 0, a: 1}
   LoadingStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _useAdvancedLodSystem: 1
+  EntityLoadingStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnCreatedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSkeletonLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDefaultAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnUserAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  PreTeardownEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLoadFailedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   SkinningType: 0
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _assetSource: 0
-  _assetPaths:
-  - 0_
-  _assetPostfixDefault: rift.glb
-  _assetPostfixAndroid: quest.glb
-  _debugDrawBoneNames: 0
-  _debugDrawSkelHierarchy: 0
-  _debugSkeletonColor: {r: 1, g: 0, b: 0, a: 1}
+  _highQuality: 0
+  _loadUserFromCdn: 0
+  _deferLoading: 0
+  _assets:
+  - source: 0
+    path: 0
+  _underscorePostfix: 1
+  _overridePostfix: 
+  _autoCdnRetry: 1
+  _autoCheckChanges: 0
+  _changeCheckInterval: 8
   _debugDrawGazePos: 0
+  _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
+  _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
   shaderDesatBlend_: 0
   shaderSolidColor_: {r: 0.12941177, g: 0.19607843, b: 0.3882353, a: 0}
@@ -230,36 +301,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f775fcfeef42d0543abbd1e03dfe74fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _loadUserFromCdn: 0
   _creationInfo:
     features: 338
-    quality: 0
-    lodFlags: -1
-    manifestationFlags: 2
-    viewFlags: 2
+    renderFilters:
+      lodFlags: 31
+      manifestationFlags: 2
+      viewFlags: 3
+      subMeshInclusionFlags: 2047
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 2047
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 0}
   _lipSync: {fileID: 0}
-  _criticalJointNames: []
-  _debugDrawTrackingPose: 0
+  _criticalJointTypes: 
+  _debugDrawing:
+    drawTrackingPose: 0
+    drawBoneNames: 0
+    drawSkelHierarchy: 0
+    drawSkelHierarchyInGame: 0
+    drawSkinTransformsInGame: 0
+    drawCriticalJoints: 0
+    skeletonColor: {r: 1, g: 0, b: 0, a: 1}
   LoadingStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _useAdvancedLodSystem: 1
+  EntityLoadingStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnCreatedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSkeletonLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDefaultAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnUserAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  PreTeardownEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLoadFailedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   SkinningType: 0
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _assetSource: 1
-  _assetPaths:
-  - SampleAssets/presets
-  _assetPostfixDefault: /0_rift.glb
-  _assetPostfixAndroid: /0_questl.glb
-  _debugDrawBoneNames: 0
-  _debugDrawSkelHierarchy: 0
-  _debugSkeletonColor: {r: 1, g: 0, b: 0, a: 1}
+  _highQuality: 0
+  _loadUserFromCdn: 0
+  _deferLoading: 0
+  _assets:
+  - source: 1
+    path: models/combined/jill/
+  _underscorePostfix: 0
+  _overridePostfix: 
+  _autoCdnRetry: 1
+  _autoCheckChanges: 0
+  _changeCheckInterval: 8
   _debugDrawGazePos: 0
+  _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
+  _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
   shaderDesatBlend_: 0
   shaderSolidColor_: {r: 0.12941177, g: 0.19607843, b: 0.3882353, a: 0}
@@ -274,7 +380,7 @@ GameObject:
   - component: {fileID: 4296408205773774975}
   - component: {fileID: 7143144871536510017}
   m_Layer: 0
-  m_Name: StreamingAssetsSeperate
+  m_Name: StreamingAssetsSuitOnly
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -306,36 +412,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f775fcfeef42d0543abbd1e03dfe74fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _loadUserFromCdn: 0
   _creationInfo:
     features: 338
-    quality: 0
-    lodFlags: -1
-    manifestationFlags: 2
-    viewFlags: 3
+    renderFilters:
+      lodFlags: 31
+      manifestationFlags: 2
+      viewFlags: 3
+      subMeshInclusionFlags: 1
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 1
+  _activeSubMeshesIncludeUntyped: 0
   _bodyTracking: {fileID: 0}
   _lipSync: {fileID: 0}
-  _criticalJointNames: []
-  _debugDrawTrackingPose: 0
+  _criticalJointTypes: 
+  _debugDrawing:
+    drawTrackingPose: 0
+    drawBoneNames: 0
+    drawSkelHierarchy: 0
+    drawSkelHierarchyInGame: 0
+    drawSkinTransformsInGame: 0
+    drawCriticalJoints: 0
+    skeletonColor: {r: 1, g: 0, b: 0, a: 1}
   LoadingStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _useAdvancedLodSystem: 1
+  EntityLoadingStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnCreatedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSkeletonLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDefaultAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnUserAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  PreTeardownEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLoadFailedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   SkinningType: 0
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _assetSource: 1
-  _assetPaths:
-  - /SampleAssets/tests/models/combined/alon
-  _assetPostfixDefault: /RiftAll.glb
-  _assetPostfixAndroid: /QuestAll.glb
-  _debugDrawBoneNames: 0
-  _debugDrawSkelHierarchy: 0
-  _debugSkeletonColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  _highQuality: 1
+  _loadUserFromCdn: 0
+  _deferLoading: 0
+  _assets:
+  - source: 1
+    path: models/combined/sabersuit/
+  _underscorePostfix: 0
+  _overridePostfix: 
+  _autoCdnRetry: 1
+  _autoCheckChanges: 0
+  _changeCheckInterval: 8
   _debugDrawGazePos: 0
+  _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
+  _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
   shaderDesatBlend_: 0
   shaderSolidColor_: {r: 0.12941177, g: 0.19607843, b: 0.3882353, a: 0}
@@ -382,35 +523,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f775fcfeef42d0543abbd1e03dfe74fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _loadUserFromCdn: 0
   _creationInfo:
     features: 370
-    quality: 0
-    lodFlags: -1
-    manifestationFlags: 2
-    viewFlags: 2
+    renderFilters:
+      lodFlags: 31
+      manifestationFlags: 2
+      viewFlags: 3
+      subMeshInclusionFlags: 2047
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 2047
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 0}
   _lipSync: {fileID: 0}
-  _criticalJointNames: []
-  _debugDrawTrackingPose: 0
+  _criticalJointTypes: 
+  _debugDrawing:
+    drawTrackingPose: 0
+    drawBoneNames: 0
+    drawSkelHierarchy: 0
+    drawSkelHierarchyInGame: 0
+    drawSkinTransformsInGame: 0
+    drawCriticalJoints: 0
+    skeletonColor: {r: 1, g: 0, b: 0, a: 1}
   LoadingStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _useAdvancedLodSystem: 1
+  EntityLoadingStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnCreatedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSkeletonLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDefaultAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnUserAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  PreTeardownEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLoadFailedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   SkinningType: 0
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _assetSource: 0
-  _assetPaths: []
-  _assetPostfixDefault: /RiftAll.glb
-  _assetPostfixAndroid: /QuestAll.glb
-  _debugDrawBoneNames: 0
-  _debugDrawSkelHierarchy: 0
-  _debugSkeletonColor: {r: 1, g: 0, b: 0, a: 1}
+  _highQuality: 0
+  _loadUserFromCdn: 0
+  _deferLoading: 0
+  _assets:
+  - source: 0
+    path: 1
+  _underscorePostfix: 1
+  _overridePostfix: 
+  _autoCdnRetry: 1
+  _autoCheckChanges: 0
+  _changeCheckInterval: 8
   _debugDrawGazePos: 0
+  _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
+  _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
   shaderDesatBlend_: 0
   shaderSolidColor_: {r: 0.12941177, g: 0.19607843, b: 0.3882353, a: 0}
@@ -425,7 +602,7 @@ GameObject:
   - component: {fileID: 4299159583212260341}
   - component: {fileID: 9185815407905995404}
   m_Layer: 0
-  m_Name: StreamingAssetsSeperate
+  m_Name: StreamingAssetsWithoutSuit
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -457,39 +634,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f775fcfeef42d0543abbd1e03dfe74fb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _loadUserFromCdn: 0
   _creationInfo:
     features: 338
-    quality: 0
-    lodFlags: -1
-    manifestationFlags: 2
-    viewFlags: 2
+    renderFilters:
+      lodFlags: 31
+      manifestationFlags: 2
+      viewFlags: 3
+      subMeshInclusionFlags: 2046
   _activeView: 2
   _activeManifestation: 2
+  _activeSubMeshes: 2046
+  _activeSubMeshesIncludeUntyped: 1
   _bodyTracking: {fileID: 0}
   _lipSync: {fileID: 0}
-  _criticalJointNames: []
-  _debugDrawTrackingPose: 0
+  _criticalJointTypes: 
+  _debugDrawing:
+    drawTrackingPose: 0
+    drawBoneNames: 0
+    drawSkelHierarchy: 0
+    drawSkelHierarchyInGame: 0
+    drawSkinTransformsInGame: 0
+    drawCriticalJoints: 0
+    skeletonColor: {r: 1, g: 0, b: 0, a: 1}
   LoadingStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  _useAdvancedLodSystem: 1
+  EntityLoadingStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnCreatedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnSkeletonLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDefaultAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnUserAvatarLoadedEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  PreTeardownEvent:
+    m_PersistentCalls:
+      m_Calls: []
+  OnLoadFailedEvent:
+    m_PersistentCalls:
+      m_Calls: []
   SkinningType: 0
+  MotionSmoothingSettings: 0
   _hidden: 0
   useRenderLods: 1
   _isLocal: 1
-  _assetSource: 1
-  _assetPaths:
-  - SampleAssets/tests/models/processed/body/bod00001body
-  - SampleAssets/tests/models/processed/head/hed00001head
-  - SampleAssets/tests/models/processed/outfit/out00020cardiganTshirtCaprisBalletFlats
-  - SampleAssets/tests/models/processed/hair/har00045straightLongPigtails
-  _assetPostfixDefault: /QuestAll.glb
-  _assetPostfixAndroid: /QuestAll.glb
-  _debugDrawBoneNames: 0
-  _debugDrawSkelHierarchy: 0
-  _debugSkeletonColor: {r: 1, g: 0, b: 0, a: 1}
+  _highQuality: 1
+  _loadUserFromCdn: 0
+  _deferLoading: 0
+  _assets:
+  - source: 1
+    path: models/combined/saberjack/
+  _underscorePostfix: 0
+  _overridePostfix: 
+  _autoCdnRetry: 1
+  _autoCheckChanges: 0
+  _changeCheckInterval: 8
   _debugDrawGazePos: 0
+  _debugDrawGazePosColor: {r: 1, g: 0, b: 1, a: 1}
+  _overrideStreamLod: 0
   shaderGrayToSolidColorBlend_: 0.7
   shaderDesatBlend_: 0
   shaderSolidColor_: {r: 0.12941177, g: 0.19607843, b: 0.3882353, a: 0}
